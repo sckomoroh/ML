@@ -25,7 +25,7 @@ void MainWindow::setSteps(double horizontal, double vertical)
 
 void MainWindow::setData(QList<QPointF> data) { mOriginalData = data; }
 
-void MainWindow::setFunction(std::function<double(double)> function) { mFunction = function; }
+void MainWindow::appendFunction(Function function) { mFunctions.push_back(function); }
 
 void MainWindow::calculate()
 {
@@ -35,18 +35,18 @@ void MainWindow::calculate()
     double vk = ((double)QMainWindow::height()) / (mTop - mBottom);
     double step = (mRight - mLeft) / (double)(QMainWindow::height());
 
-    if (mFunction) {
+    for (auto& function : mFunctions) {
+        function.mData.clear();
         for (double i = mLeft; i <= mRight; i = i + step) {
-            auto value = -mFunction(i);
+            auto value = -function.mFunction(i);
             auto point = QPointF{(i - mLeft) * hk, (value + mTop) * vk};
-            mData.push_back(point);
+            function.mData.push_back(point);
         }
     }
-    else {
-        for (auto point : mOriginalData) {
-            auto pt = QPointF{(point.x() - mLeft) * hk, (-point.y() + mTop) * vk};
-            mData.push_back(pt);
-        }
+
+    for (auto point : mOriginalData) {
+        auto pt = QPointF{(point.x() - mLeft) * hk, (-point.y() + mTop) * vk};
+        mData.push_back(pt);
     }
 }
 
@@ -116,10 +116,22 @@ void MainWindow::paintEvent(QPaintEvent* event)
     painter.setPen(pen);
 
     calculate();
-    if (mFunction) {
-        painter.drawPolyline(mData.data(), mData.size());
-    }
-    else {
-        painter.drawPoints(QPolygonF{mData});
+
+    painter.drawPoints(QPolygonF{mData});
+
+    pen = const_cast<QPen&>(painter.pen());
+    pen.setStyle(Qt::SolidLine);
+    pen.setColor(Qt::red);
+    pen.setWidth(2);
+    painter.setPen(pen);
+
+    for (auto function : mFunctions) {
+        pen = const_cast<QPen&>(painter.pen());
+        pen.setStyle(Qt::SolidLine);
+        pen.setColor(function.mColor);
+        pen.setWidth(1);
+        painter.setPen(pen);
+
+        painter.drawPolyline(function.mData.data(), function.mData.size());
     }
 }

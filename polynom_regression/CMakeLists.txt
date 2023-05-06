@@ -29,7 +29,8 @@ qt_add_executable(
     
     src/MainWindow.cpp
     src/main.cpp
-    src/logic.cpp
+    src/logic_polynominal.cpp
+    src/logic_linear.cpp
 )
 
 target_link_libraries(
