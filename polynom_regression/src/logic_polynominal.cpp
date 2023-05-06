@@ -5,18 +5,18 @@
 #include <vector>
 
 #include "tensorflow/cc/client/client_session.h"
+#include "tensorflow/cc/framework/gradient_checker.h"
+#include "tensorflow/cc/framework/gradients.h"
 #include "tensorflow/cc/ops/math_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/cc/framework/gradient_checker.h"
-#include "tensorflow/cc/framework/gradients.h"
 
 namespace tf = tensorflow;
 namespace ops = tensorflow::ops;
 
 constexpr uint8_t COEFFS_COUNT = 6;
-constexpr float LEARNING_RATE = -0.0000001;
-constexpr int TRAINING_EPOCHS = 1000;
+constexpr float LEARNING_RATE = 0.001;
+constexpr int TRAINING_EPOCHS = 100;
 
 namespace polynominal {
 
@@ -72,21 +72,21 @@ std::vector<float> calculate(const std::vector<float>& trX, const std::vector<fl
 
     tf::Output y_model = model(X);
 
-    auto cost = ops::Square(root, ops::Subtract(root, Y, y_model));
+    tf::Output cost = ops::Square(root, ops::Subtract(root, Y, y_model));
 
-    std::vector<tf::Output> update_ops;
-    for (int i = 0; i < COEFFS_COUNT; i++) {
-        update_ops.push_back(ops::ApplyGradientDescent(root, w[i], LEARNING_RATE, cost));
-    }
+    // std::vector<tf::Output> update_ops;
+    // for (int i = 0; i < COEFFS_COUNT; i++) {
+    //     update_ops.push_back(ops::ApplyGradientDescent(root, w[i], LEARNING_RATE, cost));
+    // }
 
-    update_ops.push_back(cost);
+    // update_ops.push_back(cost);
 
     std::vector<tf::Tensor> outputs;
     tf::ClientSession session{root};
 
     // Init coefficients placeholders
     for (auto i = 0; i < COEFFS_COUNT; i++) {
-        TF_CHECK_OK(session.Run({ops::Assign(root, w[i], 2.72217f)}, nullptr));
+        TF_CHECK_OK(session.Run({ops::Assign(root, w[i], 0.0f)}, nullptr));
     }
 
     std::cout << "Before weights: ";
@@ -97,7 +97,18 @@ std::vector<float> calculate(const std::vector<float>& trX, const std::vector<fl
     }
     std::cerr << std::endl;
 
-    // Start trainig
+    std::vector<tf::Output> gradients;
+    std::vector<tf::Output> w_outputs(w.begin(), w.end());
+    tf::AddSymbolicGradients(root, {cost}, w_outputs, &gradients);
+
+    std::vector<tf::Output> update_ops;
+    for (int i = 0; i < COEFFS_COUNT; i++) {
+        update_ops.push_back(ops::ApplyGradientDescent(root, w[i], LEARNING_RATE, gradients[i]));
+    }
+
+    update_ops.push_back(cost);
+
+    // Start training
     float min_cost = std::numeric_limits<float>::infinity();
     float min_epoch = 0;
     for (int epoch = 0; epoch < TRAINING_EPOCHS; epoch++) {
@@ -108,6 +119,7 @@ std::vector<float> calculate(const std::vector<float>& trX, const std::vector<fl
             total_cost += outputs[6].scalar<float>()();
         }
 
+        // Output
         std::cout << "Cost: " << total_cost << " Epoch " << epoch << " weights: ";
         for (int i = 0; i < COEFFS_COUNT; i++) {
             TF_CHECK_OK(session.Run({w[i]}, &outputs));
