@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "tensorflow/cc/client/client_session.h"
+#include "tensorflow/cc/framework/gradients.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/tensor.h"
 
@@ -12,7 +13,7 @@ namespace ops = tensorflow::ops;
 
 namespace linear {
 
-constexpr float LEARNING_RATE = -0.001;
+constexpr float LEARNING_RATE = 0.001;
 constexpr int TRAINING_EPOCHS = 100;
 
 void generateData(std::vector<float>& trX, std::vector<float>& trY)
@@ -56,22 +57,27 @@ float calculate(const std::vector<float>& trX, const std::vector<float>& trY)
 
     auto cost = ops::Square(root, ops::Subtract(root, Y, y_model));
 
-    auto train_op = ops::ApplyGradientDescent(root, w, LEARNING_RATE, cost);
+    std::vector<tf::Output> gradients;
+    std::vector<tf::Output> w_outputs;
+    w_outputs.push_back(w);
+    TF_CHECK_OK(tf::AddSymbolicGradients(root, {cost}, w_outputs, &gradients));
 
+    auto train_op = ops::ApplyGradientDescent(root, w, LEARNING_RATE, gradients[0]);
+    
     tf::ClientSession session{root};
     TF_CHECK_OK(session.Run({ops::Assign(root, w, 0.0f)}, nullptr));
 
-    float total_cost = 0.0f;
     std::vector<tf::Tensor> outputs;
     for (int epoch = 0; epoch < TRAINING_EPOCHS; epoch++) {
         for (int i = 0; i < trX.size(); i++) {
             tf::ClientSession::FeedType feedType{{X, trX[i]}, {Y, trY[i]}};
-            TF_CHECK_OK(session.Run(feedType, {train_op}, nullptr));
+            TF_CHECK_OK(session.Run(feedType, {train_op, cost}, &outputs));
         }
 
         TF_CHECK_OK(session.Run({w}, &outputs));
         float coeff = outputs[0].scalar<float>()();
-        std::cerr << "Coefficient (epoch " << epoch << "): " << coeff << std::endl;
+        float cost_val = outputs[1].scalar<float>()();
+        std::cerr << "K: " << coeff << " Cost: " << cost_val << std::endl;
     }
 
     TF_CHECK_OK(session.Run({w}, &outputs));
@@ -80,7 +86,6 @@ float calculate(const std::vector<float>& trX, const std::vector<float>& trY)
     std::cerr << "Coefficient: " << coeff << std::endl;
 
     return coeff;
-    //    return 0.0f;
 }
 
 }  // namespace linear

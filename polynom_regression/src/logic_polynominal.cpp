@@ -74,32 +74,9 @@ std::vector<float> calculate(const std::vector<float>& trX, const std::vector<fl
 
     tf::Output cost = ops::Square(root, ops::Subtract(root, Y, y_model));
 
-    // std::vector<tf::Output> update_ops;
-    // for (int i = 0; i < COEFFS_COUNT; i++) {
-    //     update_ops.push_back(ops::ApplyGradientDescent(root, w[i], LEARNING_RATE, cost));
-    // }
-
-    // update_ops.push_back(cost);
-
-    std::vector<tf::Tensor> outputs;
-    tf::ClientSession session{root};
-
-    // Init coefficients placeholders
-    for (auto i = 0; i < COEFFS_COUNT; i++) {
-        TF_CHECK_OK(session.Run({ops::Assign(root, w[i], 0.0f)}, nullptr));
-    }
-
-    std::cout << "Before weights: ";
-    for (int i = 0; i < COEFFS_COUNT; i++) {
-        std::vector<tf::Tensor> outputs;
-        TF_CHECK_OK(session.Run({w[i]}, &outputs));
-        std::cout << outputs[0].scalar<float>()() << " ";
-    }
-    std::cerr << std::endl;
-
     std::vector<tf::Output> gradients;
     std::vector<tf::Output> w_outputs(w.begin(), w.end());
-    tf::AddSymbolicGradients(root, {cost}, w_outputs, &gradients);
+    TF_CHECK_OK(tf::AddSymbolicGradients(root, {cost}, w_outputs, &gradients));
 
     std::vector<tf::Output> update_ops;
     for (int i = 0; i < COEFFS_COUNT; i++) {
@@ -107,6 +84,14 @@ std::vector<float> calculate(const std::vector<float>& trX, const std::vector<fl
     }
 
     update_ops.push_back(cost);
+
+    std::vector<tf::Tensor> outputs;
+    tf::ClientSession session{root};
+
+    // Init coefficients variables
+    for (auto i = 0; i < COEFFS_COUNT; i++) {
+        TF_CHECK_OK(session.Run({ops::Assign(root, w[i], 0.0f)}, nullptr));
+    }
 
     // Start training
     float min_cost = std::numeric_limits<float>::infinity();

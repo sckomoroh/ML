@@ -2,6 +2,7 @@
 
 #include <QApplication>
 
+#include "logic_linear.h"
 #include "logic_polynominal.h"
 
 int main(int argc, char* argv[])
@@ -12,8 +13,8 @@ int main(int argc, char* argv[])
     std::vector<float> X;
     std::vector<float> Y;
     polynominal::generateData(X, Y);
-    std::vector<float> coeffs;
-    coeffs = polynominal::calculate(X, Y);
+    std::vector<float> coeffs = polynominal::calculate(X, Y);
+    //float k = linear::calculate(X, Y);
 
     w.setBounds(-1.5, 20, 1.5, -15);
 
@@ -32,6 +33,8 @@ int main(int argc, char* argv[])
 
         return value;
     }};
+
+    //function.mFunction = std::function<double(double)>{[&k](double x) { return k * x; }};
 
     w.appendFunction(function);
     w.setData(points);
