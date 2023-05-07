@@ -17,24 +17,23 @@ namespace ops = tensorflow::ops;
 constexpr uint8_t COEFFS_COUNT = 6;
 constexpr float LEARNING_RATE = 0.001;
 constexpr int TRAINING_EPOCHS = 100;
+constexpr int POINTS_COUNT = 101;
 
 namespace polynominal {
 
 void generateData(std::vector<float>& trX, std::vector<float>& trY)
 {
-    int num_points = 101;
-    trX.resize(num_points);
-    for (int i = 0; i < num_points; ++i) {
-        trX[i] = -1.0f + (float)i * (2.0f / float(num_points - 1));
+    trX.resize(POINTS_COUNT);
+    for (int i = 0; i < POINTS_COUNT; ++i) {
+        trX[i] = -1.0f + (float)i * (2.0f / float(POINTS_COUNT - 1));
     }
 
-    int num_coeffs = 6;
-    std::vector<float> trY_coeffs = {1, 2, 3, 4, 5, 6};
-    trY = std::vector<float>(num_points, 0.0f);
+    std::vector<float> trYCoeffs = {1, 2, 3, 4, 5, 6};
+    trY = std::vector<float>(POINTS_COUNT, 0.0f);
 
-    for (int i = 0; i < num_points; ++i) {
-        for (int j = 0; j < num_coeffs; ++j) {
-            trY[i] += trY_coeffs[j] * std::pow(trX[i], j);
+    for (int i = 0; i < POINTS_COUNT; ++i) {
+        for (int j = 0; j < COEFFS_COUNT; ++j) {
+            trY[i] += trYCoeffs[j] * std::pow(trX[i], j);
         }
     }
 
@@ -42,12 +41,12 @@ void generateData(std::vector<float>& trX, std::vector<float>& trY)
     std::mt19937 gen(rd());
     std::normal_distribution<float> dis(0.0, 0.5);
 
-    for (int i = 0; i < num_points; ++i) {
+    for (int i = 0; i < POINTS_COUNT; ++i) {
         trY[i] += dis(gen);
     }
 }
 
-std::vector<float> calculate(const std::vector<float>& trX, const std::vector<float>& trY)
+std::vector<float> calculate(const std::vector<float>& trX, const std::vector<float>& trY, bool log)
 {
     tf::Scope root = tf::Scope::NewRootScope();
 
@@ -55,84 +54,80 @@ std::vector<float> calculate(const std::vector<float>& trX, const std::vector<fl
     auto Y = ops::Placeholder(root, tf::DataType::DT_FLOAT);
 
     // Create vector with coefficients for polinom
-    std::vector<ops::Variable> w;
+    std::vector<ops::Variable> weights;
     for (int i = 0; i < COEFFS_COUNT; i++) {
-        w.emplace_back(ops::Variable{root, {}, tf::DataType::DT_FLOAT});
+        weights.emplace_back(ops::Variable{root, {}, tf::DataType::DT_FLOAT});
     }
 
     // Define model y = w6*x^6+w5*x^5+w4*x^4+w3*x^3+w2*x^2+w1*x
-    auto model = [&root, &w](const ops::Placeholder& X) -> tf::Output {
+    auto modelFunction = [&root, &weights](const ops::Placeholder& X) -> tf::Output {
         std::vector<tf::Output> terms;
         for (float i = 0; i < COEFFS_COUNT; i++) {
-            auto term = ops::Multiply(root, w[i], ops::Pow(root, X, i));
+            auto term = ops::Multiply(root, weights[i], ops::Pow(root, X, i));
             terms.push_back(term);
         }
         return ops::AddN(root, terms);
     };
 
-    tf::Output y_model = model(X);
+    tf::Output modelOp = modelFunction(X);
 
-    tf::Output cost = ops::Square(root, ops::Subtract(root, Y, y_model));
+    tf::Output costOp = ops::Square(root, ops::Subtract(root, Y, modelOp));
 
     std::vector<tf::Output> gradients;
-    std::vector<tf::Output> w_outputs(w.begin(), w.end());
-    TF_CHECK_OK(tf::AddSymbolicGradients(root, {cost}, w_outputs, &gradients));
+    std::vector<tf::Output> weightsOutputs(weights.begin(), weights.end());
+    TF_CHECK_OK(tf::AddSymbolicGradients(root, {costOp}, weightsOutputs, &gradients));
 
-    std::vector<tf::Output> update_ops;
+    std::vector<tf::Output> updateOps;
     for (int i = 0; i < COEFFS_COUNT; i++) {
-        update_ops.push_back(ops::ApplyGradientDescent(root, w[i], LEARNING_RATE, gradients[i]));
+        updateOps.push_back(ops::ApplyGradientDescent(root, weights[i], LEARNING_RATE, gradients[i]));
     }
 
-    update_ops.push_back(cost);
+    updateOps.push_back(costOp);
 
     std::vector<tf::Tensor> outputs;
     tf::ClientSession session{root};
 
     // Init coefficients variables
     for (auto i = 0; i < COEFFS_COUNT; i++) {
-        TF_CHECK_OK(session.Run({ops::Assign(root, w[i], 0.0f)}, nullptr));
+        TF_CHECK_OK(session.Run({ops::Assign(root, weights[i], 0.0f)}, nullptr));
     }
 
     // Start training
-    float min_cost = std::numeric_limits<float>::infinity();
-    float min_epoch = 0;
     for (int epoch = 0; epoch < TRAINING_EPOCHS; epoch++) {
-        float total_cost = 0.0f;
+        float totalCost = 0.0f;
         for (int i = 0; i < trX.size(); i++) {
             tf::ClientSession::FeedType feedType{{X, trX[i]}, {Y, trY[i]}};
-            TF_CHECK_OK(session.Run(feedType, update_ops, &outputs));
-            total_cost += outputs[6].scalar<float>()();
+            TF_CHECK_OK(session.Run(feedType, updateOps, &outputs));
+            totalCost += outputs[6].scalar<float>()();
         }
 
-        // Output
-        std::cout << "Cost: " << total_cost << " Epoch " << epoch << " weights: ";
-        for (int i = 0; i < COEFFS_COUNT; i++) {
-            TF_CHECK_OK(session.Run({w[i]}, &outputs));
-            std::cerr << outputs[0].scalar<float>()() << " ";
-        }
+        if (log) {
+            std::cout << "Cost: " << totalCost << " Epoch " << epoch << " weights: ";
+            for (int i = 0; i < COEFFS_COUNT; i++) {
+                TF_CHECK_OK(session.Run({weights[i]}, &outputs));
+                std::cerr << outputs[0].scalar<float>()() << " ";
+            }
 
-        if (total_cost < min_cost) {
-            min_cost = total_cost;
-            min_epoch = epoch;
+            std::cerr << std::endl;
         }
-
-        std::cerr << std::endl;
     }
 
-    std::cerr << "Min epoch: " << min_epoch << " Min cost: " << min_cost << std::endl;
+    if (log) {
+        std::cerr << "Coefficients: ";
+    }
 
-    // Print coefficients
-    std::cerr << "Coefficients: ";
-    std::vector<float> w_val(COEFFS_COUNT);
+    std::vector<float> weightsResult(COEFFS_COUNT);
     for (int i = 0; i < COEFFS_COUNT; i++) {
-        TF_CHECK_OK(session.Run({w[i]}, &outputs));
-        w_val[i] = outputs[0].scalar<float>()();
-        std::cerr << outputs[0].scalar<float>()() << " ";
+        TF_CHECK_OK(session.Run({weights[i]}, &outputs));
+        weightsResult[i] = outputs[0].scalar<float>()();
+        if (log) {
+            std::cerr << outputs[0].scalar<float>()() << " ";
+        }
     }
 
     std::cerr << std::endl;
 
-    return w_val;
+    return weightsResult;
 }
 
 }  // namespace polynominal

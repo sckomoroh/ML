@@ -39,8 +39,6 @@ int main(int argc, char* argv[])
     w.appendFunction(function);
     w.setData(points);
 
-    // w.setFunction([](double x) { return x * x * x; });
-
     w.resize(640, 480);
 
     w.show();
