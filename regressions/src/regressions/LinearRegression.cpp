@@ -1,4 +1,9 @@
-#include "logic_linear.h"
+/**
+ * Copyright 2023
+ * Author: Yehor Zvihunov
+ **/
+
+#include "LinearRegression.h"
 
 #include <iostream>
 #include <vector>
@@ -11,13 +16,15 @@
 namespace tf = tensorflow;
 namespace ops = tensorflow::ops;
 
-namespace linear {
+namespace regression {
 
 constexpr float LEARNING_RATE = 0.001;
 constexpr int TRAINING_EPOCHS = 100;
 constexpr int POINTS_COUNT = 101;
 
-void generateData(std::vector<float>& trX, std::vector<float>& trY)
+float LinearRegression::function(std::vector<float> k, float X) { return k[0] * X; }
+
+void LinearRegression::generateData(std::vector<float>& trX, std::vector<float>& trY)
 {
     trX.resize(POINTS_COUNT);
     for (int i = 0; i < POINTS_COUNT; ++i) {
@@ -39,7 +46,9 @@ void generateData(std::vector<float>& trX, std::vector<float>& trY)
     }
 }
 
-float calculate(const std::vector<float>& trX, const std::vector<float>& trY, bool log)
+std::vector<float> LinearRegression::train(const std::vector<float>& trX,
+                                           const std::vector<float>& trY,
+                                           bool log)
 {
     tf::Scope root = tf::Scope::NewRootScope();
 
@@ -74,10 +83,10 @@ float calculate(const std::vector<float>& trX, const std::vector<float>& trY, bo
         }
 
         if (log) {
+            float costValue = outputs[1].scalar<float>()();
             TF_CHECK_OK(session.Run({weight}, &outputs));
             float coeff = outputs[0].scalar<float>()();
-            float cost_val = outputs[1].scalar<float>()();
-            std::cerr << "K: " << coeff << " Cost: " << cost_val << std::endl;
+            std::cerr << "K: " << coeff << " Cost: " << costValue << std::endl;
         }
     }
 
@@ -88,7 +97,7 @@ float calculate(const std::vector<float>& trX, const std::vector<float>& trY, bo
         std::cerr << "Coefficient: " << coeff << std::endl;
     }
 
-    return coeff;
+    return {coeff};
 }
 
-}  // namespace linear
+}  // namespace regression

@@ -1,3 +1,8 @@
+/**
+ * Copyright 2023
+ * Author: Yehor Zvihunov
+ **/
+
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
@@ -34,8 +39,6 @@ public:
     ~MainWindow();
 
 public:
-    void setBounds(double left, double top, double right, double bottom);
-    void setSteps(double horizontal, double vertical);
     void setData(QList<QPointF> data);
     void appendFunction(Function function);
 
@@ -43,6 +46,8 @@ protected:
     void paintEvent(QPaintEvent* event) override;
 
 private:
+    void setBounds(double left, double top, double right, double bottom);
     void calculate();    
+    void setSteps(double horizontal, double vertical);
 };
 #endif  // MAINWINDOW_H

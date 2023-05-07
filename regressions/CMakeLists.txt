@@ -27,10 +27,13 @@ link_directories(${TENSORFLOW_LIB_DIR})
 qt_add_executable(
     ${PROJECT_NAME} 
     
-    src/MainWindow.cpp
     src/main.cpp
-    src/logic_polynominal.cpp
-    src/logic_linear.cpp
+    
+    src/ui/MainWindow.cpp
+
+    src/regressions/LinearRegression.cpp
+    src/regressions/LogisticRegression.cpp
+    src/regressions/PolynomialRegression.cpp
 )
 
 target_link_libraries(

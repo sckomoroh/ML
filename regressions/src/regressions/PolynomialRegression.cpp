@@ -1,4 +1,9 @@
-#include "logic_polynominal.h"
+/**
+ * Copyright 2023
+ * Author: Yehor Zvihunov
+ **/
+
+#include "PolynomialRegression.h"
 
 #include <iostream>
 #include <limits>
@@ -19,13 +24,30 @@ constexpr float LEARNING_RATE = 0.001;
 constexpr int TRAINING_EPOCHS = 100;
 constexpr int POINTS_COUNT = 101;
 
-namespace polynominal {
+namespace regression {
 
-void generateData(std::vector<float>& trX, std::vector<float>& trY)
+float PolynomialRegression::function(std::vector<float> k, float X)
 {
+    float value = 0.0f;
+    for (int j = 0; j < k.size(); ++j) {
+        value += k[j] * std::pow(X, j);
+    }
+
+    return value;
+}
+
+void PolynomialRegression::generateData(std::vector<float>& trX, std::vector<float>& trY)
+{
+    float leftLimit = -1.0f;
+    float rightLimit = 1.0f;
     trX.resize(POINTS_COUNT);
     for (int i = 0; i < POINTS_COUNT; ++i) {
-        trX[i] = -1.0f + (float)i * (2.0f / float(POINTS_COUNT - 1));
+        trX[i] = leftLimit + i * abs(leftLimit - rightLimit) / POINTS_COUNT;
+    }
+
+    float step = abs(leftLimit - rightLimit) / (float)POINTS_COUNT;
+    for (float i = leftLimit; i < rightLimit; i = i + step) {
+        trX[i] = i;
     }
 
     std::vector<float> trYCoeffs = {1, 2, 3, 4, 5, 6};
@@ -46,14 +68,15 @@ void generateData(std::vector<float>& trX, std::vector<float>& trY)
     }
 }
 
-std::vector<float> calculate(const std::vector<float>& trX, const std::vector<float>& trY, bool log)
+std::vector<float> PolynomialRegression::train(const std::vector<float>& trX,
+                                               const std::vector<float>& trY,
+                                               bool log)
 {
     tf::Scope root = tf::Scope::NewRootScope();
 
     auto X = ops::Placeholder(root, tf::DataType::DT_FLOAT);
     auto Y = ops::Placeholder(root, tf::DataType::DT_FLOAT);
 
-    // Create vector with coefficients for polinom
     std::vector<ops::Variable> weights;
     for (int i = 0; i < COEFFS_COUNT; i++) {
         weights.emplace_back(ops::Variable{root, {}, tf::DataType::DT_FLOAT});
@@ -79,7 +102,8 @@ std::vector<float> calculate(const std::vector<float>& trX, const std::vector<fl
 
     std::vector<tf::Output> updateOps;
     for (int i = 0; i < COEFFS_COUNT; i++) {
-        updateOps.push_back(ops::ApplyGradientDescent(root, weights[i], LEARNING_RATE, gradients[i]));
+        updateOps.push_back(
+            ops::ApplyGradientDescent(root, weights[i], LEARNING_RATE, gradients[i]));
     }
 
     updateOps.push_back(costOp);
@@ -130,4 +154,4 @@ std::vector<float> calculate(const std::vector<float>& trX, const std::vector<fl
     return weightsResult;
 }
 
-}  // namespace polynominal
+}  // namespace regression
