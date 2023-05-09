@@ -13,14 +13,21 @@
 #include <QPainter>
 #include <QWidget>
 
-struct Function {
-    std::function<double(double)> mFunction;
-    QList<QPointF> mData;
-    QColor mColor;
-};
-
 class MainWindow : public QMainWindow {
     Q_OBJECT
+public:
+    struct Function {
+        std::function<double(double)> mFunction;
+        QList<QPointF> mData;
+        QColor mColor;
+    };
+
+    struct Data {
+        std::vector<QPointF> mData;
+        QList<QPointF> mScailedData;
+        QColor mColor;
+    };
+
 private:
     double mTop;
     double mBottom;
@@ -31,7 +38,7 @@ private:
     double mVerticalStep;
 
     QList<QPointF> mData;
-    QList<QPointF> mOriginalData;
+    QList<Data> mOriginalData;
     std::list<Function> mFunctions;
 
 public:
@@ -39,7 +46,8 @@ public:
     ~MainWindow();
 
 public:
-    void setData(QList<QPointF> data);
+    void adjust();
+    void appendData(Data data);
     void appendFunction(Function function);
 
 protected:
@@ -47,7 +55,7 @@ protected:
 
 private:
     void setBounds(double left, double top, double right, double bottom);
-    void calculate();    
+    void calculate();
     void setSteps(double horizontal, double vertical);
 };
 #endif  // MAINWINDOW_H
