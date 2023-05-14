@@ -23,6 +23,7 @@ constexpr uint8_t COEFFS_COUNT = 6;
 constexpr float LEARNING_RATE = 0.001;
 constexpr int TRAINING_EPOCHS = 100;
 constexpr int POINTS_COUNT = 101;
+constexpr float LAMBDA = 0.01;
 
 namespace regression {
 
@@ -36,26 +37,23 @@ float PolynomialRegression::function(std::vector<float> k, float X)
     return value;
 }
 
-void PolynomialRegression::generateData(std::vector<float>& trX, std::vector<float>& trY)
+std::vector<std::vector<IRegression::PointF>> PolynomialRegression::generateData()
 {
+    std::vector<IRegression::PointF> points;
+    points.resize(POINTS_COUNT);
+
     float leftLimit = -1.0f;
     float rightLimit = 1.0f;
-    trX.resize(POINTS_COUNT);
-    for (int i = 0; i < POINTS_COUNT; ++i) {
-        trX[i] = leftLimit + i * abs(leftLimit - rightLimit) / POINTS_COUNT;
-    }
 
-    float step = abs(leftLimit - rightLimit) / (float)POINTS_COUNT;
-    for (float i = leftLimit; i < rightLimit; i = i + step) {
-        trX[i] = i;
+    for (int i = 0; i < POINTS_COUNT; ++i) {
+        points[i].x = leftLimit + i * abs(leftLimit - rightLimit) / POINTS_COUNT;
     }
 
     std::vector<float> trYCoeffs = {1, 2, 3, 4, 5, 6};
-    trY = std::vector<float>(POINTS_COUNT, 0.0f);
 
     for (int i = 0; i < POINTS_COUNT; ++i) {
         for (int j = 0; j < COEFFS_COUNT; ++j) {
-            trY[i] += trYCoeffs[j] * std::pow(trX[i], j);
+            points[i].y += trYCoeffs[j] * std::pow(points[i].x, j);
         }
     }
 
@@ -64,14 +62,17 @@ void PolynomialRegression::generateData(std::vector<float>& trX, std::vector<flo
     std::normal_distribution<float> dis(0.0, 0.5);
 
     for (int i = 0; i < POINTS_COUNT; ++i) {
-        trY[i] += dis(gen);
+        points[i].y += dis(gen);
     }
+
+    return {points};
 }
 
-std::vector<float> PolynomialRegression::train(const std::vector<float>& trX,
-                                               const std::vector<float>& trY,
+std::vector<float> PolynomialRegression::train(std::vector<std::vector<IRegression::PointF>> points,
                                                bool log)
 {
+    auto trainPoints = points[0];
+
     tf::Scope root = tf::Scope::NewRootScope();
 
     auto X = ops::Placeholder(root, tf::DataType::DT_FLOAT);
@@ -83,18 +84,29 @@ std::vector<float> PolynomialRegression::train(const std::vector<float>& trX,
     }
 
     // Define model y = w6*x^6+w5*x^5+w4*x^4+w3*x^3+w2*x^2+w1*x
-    auto modelFunction = [&root, &weights](const ops::Placeholder& X) -> tf::Output {
+    auto predictionFunction = [&root, &weights](const ops::Placeholder& X) -> tf::Output {
         std::vector<tf::Output> terms;
         for (float i = 0; i < COEFFS_COUNT; i++) {
             auto term = ops::Multiply(root, weights[i], ops::Pow(root, X, i));
             terms.push_back(term);
         }
+        
         return ops::AddN(root, terms);
     };
 
-    tf::Output modelOp = modelFunction(X);
+    tf::Output predictionOp = predictionFunction(X);
 
-    tf::Output costOp = ops::Square(root, ops::Subtract(root, Y, modelOp));
+    // To avoid overweight
+    // I dodn't know why but with using the ops::Square the program crashes
+    std::vector<tf::Output> terms;
+    for (auto weight : weights) {
+        terms.push_back(ops::Multiply(root, weight, weight));
+    }
+
+    auto L2Regularization = ops::Multiply(root, ops::Const(root, LAMBDA), ops::AddN(root, terms));
+
+    tf::Output costOp =
+        ops::Add(root, ops::Square(root, ops::Subtract(root, Y, predictionOp)), L2Regularization);
 
     std::vector<tf::Output> gradients;
     std::vector<tf::Output> weightsOutputs(weights.begin(), weights.end());
@@ -119,8 +131,8 @@ std::vector<float> PolynomialRegression::train(const std::vector<float>& trX,
     // Start training
     for (int epoch = 0; epoch < TRAINING_EPOCHS; epoch++) {
         float totalCost = 0.0f;
-        for (int i = 0; i < trX.size(); i++) {
-            tf::ClientSession::FeedType feedType{{X, trX[i]}, {Y, trY[i]}};
+        for (int i = 0; i < trainPoints.size(); i++) {
+            tf::ClientSession::FeedType feedType{{X, trainPoints[i].x}, {Y, trainPoints[i].y}};
             TF_CHECK_OK(session.Run(feedType, updateOps, &outputs));
             totalCost += outputs[6].scalar<float>()();
         }

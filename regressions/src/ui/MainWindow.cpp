@@ -31,35 +31,47 @@ void MainWindow::setSteps(double horizontal, double vertical)
     mVerticalStep = vertical;
 }
 
-void MainWindow::setData(QList<QPointF> data)
+void MainWindow::adjust()
 {
-    mOriginalData = data;
-    auto minX =
-        std::min_element(data.begin(), data.end(), [](const QPointF& left, const QPointF& right) {
-            return left.x() < right.x();
-        });
-    auto minY =
-        std::min_element(data.begin(), data.end(), [](const QPointF& left, const QPointF& right) {
-            return left.y() < right.y();
-        });
-    auto maxX =
-        std::max_element(data.begin(), data.end(), [](const QPointF& left, const QPointF& right) {
-            return left.x() < right.x();
-        });
-    auto maxY =
-        std::max_element(data.begin(), data.end(), [](const QPointF& left, const QPointF& right) {
-            return left.y() < right.y();
-        });
+    float curMinX = std::numeric_limits<float>::infinity();
+    float curMinY = std::numeric_limits<float>::infinity();
+    float curMaxX = std::numeric_limits<float>::min();
+    float curMaxY = std::numeric_limits<float>::min();
 
-    auto paddingX = abs(maxX->x() - minX->x()) / 10.0f;
-    paddingX = (abs(maxX->x() - minX->x()) - (paddingX / 2)) / 10.0f;
-    auto paddingY = abs(maxY->y() - minY->y()) / 10.0f;
-    paddingY = (abs(maxY->y() - minY->y()) - (paddingY / 2)) / 10.0f;
-    setBounds(minX->x() - paddingX, maxY->y() + paddingY, maxX->x() + paddingX,
-              minY->y() - paddingY);
+    for (auto data : mOriginalData) {
+        if (!data.mData.empty()) {
+            auto minX = std::min_element(
+                data.mData.begin(), data.mData.end(),
+                [](const QPointF& left, const QPointF& right) { return left.x() < right.x(); });
+            auto minY = std::min_element(
+                data.mData.begin(), data.mData.end(),
+                [](const QPointF& left, const QPointF& right) { return left.y() < right.y(); });
+            auto maxX = std::max_element(
+                data.mData.begin(), data.mData.end(),
+                [](const QPointF& left, const QPointF& right) { return left.x() < right.x(); });
+            auto maxY = std::max_element(
+                data.mData.begin(), data.mData.end(),
+                [](const QPointF& left, const QPointF& right) { return left.y() < right.y(); });
+
+            curMinX = std::min((float)minX->x(), curMinX);
+            curMinY = std::min((float)minY->y(), curMinY);
+            curMaxX = std::max((float)maxX->x(), curMaxX);
+            curMaxY = std::max((float)maxY->y(), curMaxY);
+        }
+    }
+
+    auto paddingX = abs(curMaxX - curMinX) / 10.0f;
+    paddingX = (abs(curMaxX - curMinX) - (paddingX / 2)) / 10.0f;
+
+    auto paddingY = abs(curMaxY - curMinY) / 10.0f;
+    paddingY = (abs(curMaxY - curMinY) - (paddingY / 2)) / 10.0f;
+
+    setBounds(curMinX - paddingX, curMaxY + paddingY, curMaxX + paddingX, curMinY - paddingY);
 
     setSteps(paddingX, paddingY);
 }
+
+void MainWindow::appendData(Data data) { mOriginalData.append(data); }
 
 void MainWindow::appendFunction(Function function) { mFunctions.push_back(function); }
 
@@ -80,9 +92,12 @@ void MainWindow::calculate()
         }
     }
 
-    for (auto point : mOriginalData) {
-        auto pt = QPointF{(point.x() - mLeft) * hk, (-point.y() + mTop) * vk};
-        mData.push_back(pt);
+    for (auto& data : mOriginalData) {
+        data.mScailedData.clear();
+        for (auto point : data.mData) {
+            auto pt = QPointF{(point.x() - mLeft) * hk, (-point.y() + mTop) * vk};
+            data.mScailedData.push_back(pt);
+        }
     }
 }
 
@@ -187,18 +202,20 @@ void MainWindow::paintEvent(QPaintEvent* event)
         // qDebug() << "Incorrect vertical step";
     }
 
-    pen = const_cast<QPen&>(painter.pen());
-    pen.setStyle(Qt::SolidLine);
-    pen.setColor(Qt::red);
-    pen.setWidth(2);
-    painter.setPen(pen);
-
     calculate();
 
     auto oldBrush = painter.brush();
-    painter.setBrush(QBrush(Qt::red, Qt::SolidPattern));
-    for (auto iter = mData.begin(); iter != mData.end(); iter++) {
-        painter.drawEllipse(*iter, 2, 2);
+    for (auto data : mOriginalData) {
+        pen = QPen(painter.pen());
+        pen.setStyle(Qt::SolidLine);
+        pen.setColor(data.mColor);
+        pen.setWidth(2);
+        painter.setPen(pen);
+        painter.setBrush(QBrush(data.mColor, Qt::SolidPattern));
+
+        for (auto iter = data.mScailedData.begin(); iter != data.mScailedData.end(); iter++) {
+            painter.drawEllipse(*iter, 2, 2);
+        }
     }
 
     painter.setBrush(oldBrush);
