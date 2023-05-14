@@ -10,20 +10,15 @@
 
 #include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/framework/gradients.h"
-#include "tensorflow/cc/ops/control_flow_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/tensor.h"
 
-#include "tensorflow/cc/ops/array_ops.h"
-#include "tensorflow/cc/ops/control_flow_ops.h"
-#include "tensorflow/cc/ops/math_ops.h"
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/env.h"
+#include "Common/Utils.h"
 
 namespace tf = tensorflow;
 namespace ops = tensorflow::ops;
+
+using common::PointF;
 
 namespace regression {
 
@@ -34,33 +29,26 @@ constexpr float LAMBDA = 0.01;
 
 float LinearRegression::function(std::vector<float> k, float X) { return k[0] * X + k[1]; }
 
-std::vector<std::vector<IRegression::PointF>> LinearRegression::generateData()
+std::vector<std::vector<PointF>> LinearRegression::generateData()
 {
-    std::vector<IRegression::PointF> points;
-    points.resize(POINTS_COUNT);
-    for (int i = 0; i < POINTS_COUNT; ++i) {
-        points[i].x = -1.0f + (float)i * (2.0f / float(POINTS_COUNT - 1));
-    }
+    std::vector<PointF> points = common::Utils::generateRange<PointF>(
+        -1.0f, 1.0f, 101, [](PointF& item, float value) { item.x = value; });
 
     for (int i = 0; i < POINTS_COUNT; ++i) {
         points[i].y += 2 * points[i].x + 4;
     }
 
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::normal_distribution<float> dis(0.0, 0.33);
-
-    for (int i = 0; i < POINTS_COUNT; ++i) {
-        points[i].y += dis(gen);
-    }
+    common::Utils::randomizeData<PointF>(points, 0.0f, 0.33f,
+                                         [](PointF& item, float value) { item.y += value; });
 
     return {points};
 }
 
-std::vector<float> LinearRegression::train(std::vector<std::vector<IRegression::PointF>> points,
+std::vector<float> LinearRegression::train(std::vector<std::vector<PointF>> points,
                                            bool log)
 {
     auto trainPoints = points[0];
+
     tf::Scope root = tf::Scope::NewRootScope();
 
     auto X = ops::Placeholder(root, tf::DataType::DT_FLOAT);

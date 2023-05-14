@@ -11,9 +11,7 @@
 #include <random>
 
 #include "tensorflow/cc/client/client_session.h"
-#include "tensorflow/cc/framework/gradient_checker.h"
 #include "tensorflow/cc/framework/gradients.h"
-#include "tensorflow/cc/ops/math_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/tensor.h"
 
@@ -21,6 +19,8 @@ namespace regression {
 
 namespace tf = tensorflow;
 namespace ops = tensorflow::ops;
+
+using common::PointF;
 
 constexpr int POINTS_COUNT = 500;
 constexpr float LEARNING_RATE = 0.001;
@@ -34,7 +34,7 @@ float Logistic2ParamRegression::function(std::vector<float> k, float X)
     return 0.0f;
 }
 
-std::vector<std::vector<IRegression::PointF>> Logistic2ParamRegression::generateData()
+std::vector<std::vector<PointF>> Logistic2ParamRegression::generateData()
 {
     std::vector<PointF> leftPoints;
     std::vector<PointF> rightPoints;
@@ -59,9 +59,8 @@ std::vector<std::vector<IRegression::PointF>> Logistic2ParamRegression::generate
     return {leftPoints, rightPoints};
 }
 
-std::vector<float> Logistic2ParamRegression::train(
-    std::vector<std::vector<IRegression::PointF>> points,
-    bool log)
+std::vector<float> Logistic2ParamRegression::train(std::vector<std::vector<PointF>> points,
+                                                   bool log)
 {
     std::vector<float> x1s(POINTS_COUNT * 2);
     std::vector<float> x2s(POINTS_COUNT * 2);
@@ -108,13 +107,9 @@ std::vector<float> Logistic2ParamRegression::train(
     // -tf.reduce_mean(tf.math.log(y_model * ys + (1 - y_model) * (1 - ys)))
     tf::Output costOp;
     costOp = ops::Neg(
-        root, ops::ReduceMean(
-                  root,
-                  ops::Log(root, ops::Add(root, ops::Multiply(root, model, YS),
-                                          ops::Multiply(root, ops::Subtract(root, {1.0f}, model),
-                                                        ops::Subtract(root, {1.0f}, YS)))),
-
-                  {0}));
+        root, ops::Log(root, ops::Add(root, ops::Multiply(root, model, YS),
+                                      ops::Multiply(root, ops::Subtract(root, {1.0f}, model),
+                                                    ops::Subtract(root, {1.0f}, YS)))));
 
     costOp = ops::Add(root, L2Regularization, costOp);
 
