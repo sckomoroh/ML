@@ -11,9 +11,7 @@
 #include <random>
 
 #include "tensorflow/cc/client/client_session.h"
-#include "tensorflow/cc/framework/gradient_checker.h"
 #include "tensorflow/cc/framework/gradients.h"
-#include "tensorflow/cc/ops/math_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/tensor.h"
 
@@ -21,6 +19,8 @@ namespace regression {
 
 namespace tf = tensorflow;
 namespace ops = tensorflow::ops;
+
+using common::PointF;
 
 constexpr int SAMPLES_COUNT = 100;
 constexpr float LEARNING_RATE = 0.001;
@@ -33,7 +33,7 @@ float LogisticRegression::function(std::vector<float> k, float x)
     return 1.0f / (1.0f + exp(-x));
 }
 
-std::vector<std::vector<IRegression::PointF>> LogisticRegression::generateData()
+std::vector<std::vector<PointF>> LogisticRegression::generateData()
 {
     std::vector<PointF> rightPoints;
     std::vector<PointF> leftPoints;
@@ -59,7 +59,7 @@ std::vector<std::vector<IRegression::PointF>> LogisticRegression::generateData()
     return {leftPoints, rightPoints};
 }
 
-std::vector<float> LogisticRegression::train(std::vector<std::vector<IRegression::PointF>> points,
+std::vector<float> LogisticRegression::train(std::vector<std::vector<PointF>> points,
                                              bool log)
 {
     auto trainPoints = points[0];
@@ -81,15 +81,11 @@ std::vector<float> LogisticRegression::train(std::vector<std::vector<IRegression
         root, {LAMBDA}, ops::Add(root, ops::Square(root, weight0), ops::Square(root, weight1)));
 
     // -Y * tf.log(predictionOp) - (1 - У) * tf.log(l - predictionOp)
-    auto costOp =
-        ops::Add(root, L2Regularization,
-                 ops::ReduceMean(
-                     root,
-                     ops::Subtract(
-                         root, ops::Multiply(root, ops::Neg(root, Y), ops::Log(root, predictionOp)),
-                         ops::Multiply(root, ops::Subtract(root, 1.0f, Y),
-                                       ops::Log(root, ops::Subtract(root, 1.0f, predictionOp)))),
-                     {0}));
+    auto costOp = ops::Add(
+        root, L2Regularization,
+        ops::Subtract(root, ops::Multiply(root, ops::Neg(root, Y), ops::Log(root, predictionOp)),
+                      ops::Multiply(root, ops::Subtract(root, 1.0f, Y),
+                                    ops::Log(root, ops::Subtract(root, 1.0f, predictionOp)))));
 
     std::vector<tf::Output> gradients;
     std::vector<tf::Output> weightOutputs;

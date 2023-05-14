@@ -10,14 +10,14 @@
 #include <vector>
 
 #include "tensorflow/cc/client/client_session.h"
-#include "tensorflow/cc/framework/gradient_checker.h"
 #include "tensorflow/cc/framework/gradients.h"
-#include "tensorflow/cc/ops/math_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/tensor.h"
 
 namespace tf = tensorflow;
 namespace ops = tensorflow::ops;
+
+using common::PointF;
 
 constexpr uint8_t COEFFS_COUNT = 6;
 constexpr float LEARNING_RATE = 0.001;
@@ -37,9 +37,9 @@ float PolynomialRegression::function(std::vector<float> k, float X)
     return value;
 }
 
-std::vector<std::vector<IRegression::PointF>> PolynomialRegression::generateData()
+std::vector<std::vector<PointF>> PolynomialRegression::generateData()
 {
-    std::vector<IRegression::PointF> points;
+    std::vector<PointF> points;
     points.resize(POINTS_COUNT);
 
     float leftLimit = -1.0f;
@@ -68,7 +68,7 @@ std::vector<std::vector<IRegression::PointF>> PolynomialRegression::generateData
     return {points};
 }
 
-std::vector<float> PolynomialRegression::train(std::vector<std::vector<IRegression::PointF>> points,
+std::vector<float> PolynomialRegression::train(std::vector<std::vector<PointF>> points,
                                                bool log)
 {
     auto trainPoints = points[0];
