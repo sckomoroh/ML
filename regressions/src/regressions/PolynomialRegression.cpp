@@ -12,67 +12,41 @@
 #include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/framework/gradients.h"
 #include "tensorflow/cc/ops/standard_ops.h"
-#include "tensorflow/core/framework/tensor.h"
 
 namespace tf = tensorflow;
 namespace ops = tensorflow::ops;
 
-using common::PointF;
-
 constexpr uint8_t COEFFS_COUNT = 6;
-constexpr float LEARNING_RATE = 0.001;
+constexpr float LEARNING_RATE = 0.01;
 constexpr int TRAINING_EPOCHS = 100;
 constexpr int POINTS_COUNT = 101;
 constexpr float LAMBDA = 0.01;
 
-namespace regression {
+namespace regression::polynomial {
 
-float PolynomialRegression::function(std::vector<float> k, float X)
+InputMatrix generateData()
 {
-    float value = 0.0f;
-    for (int j = 0; j < k.size(); ++j) {
-        value += k[j] * std::pow(X, j);
-    }
-
-    return value;
-}
-
-std::vector<std::vector<PointF>> PolynomialRegression::generateData()
-{
-    std::vector<PointF> points;
-    points.resize(POINTS_COUNT);
-
-    float leftLimit = -1.0f;
-    float rightLimit = 1.0f;
-
-    for (int i = 0; i < POINTS_COUNT; ++i) {
-        points[i].x = leftLimit + i * abs(leftLimit - rightLimit) / POINTS_COUNT;
-    }
+    InputMatrix matrix = InputMatrix::Zero();
+    matrix.row(0) = Eigen::VectorXf::LinSpaced(POINTS_COUNT, -1.0f, 1.0f);
 
     std::vector<float> trYCoeffs = {1, 2, 3, 4, 5, 6};
 
     for (int i = 0; i < POINTS_COUNT; ++i) {
         for (int j = 0; j < COEFFS_COUNT; ++j) {
-            points[i].y += trYCoeffs[j] * std::pow(points[i].x, j);
+            matrix(1, i) += trYCoeffs[j] * std::pow(matrix(0, i), j);
         }
     }
 
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::normal_distribution<float> dis(0.0, 0.5);
-
-    for (int i = 0; i < POINTS_COUNT; ++i) {
-        points[i].y += dis(gen);
+    for (int i = 0; i < matrix.cols(); ++i) {
+        matrix(1, i) =
+            Eigen::internal::random<float>(matrix(1, i) - 0.5f, matrix(1, i) + 0.5) + 5.0f;
     }
 
-    return {points};
+    return matrix;
 }
 
-std::vector<float> PolynomialRegression::train(std::vector<std::vector<PointF>> points,
-                                               bool log)
+Eigen::Matrix<float, 6, 1> PolynomialRegression::train(const InputMatrix& matrix, bool log)
 {
-    auto trainPoints = points[0];
-
     tf::Scope root = tf::Scope::NewRootScope();
 
     auto X = ops::Placeholder(root, tf::DataType::DT_FLOAT);
@@ -83,14 +57,14 @@ std::vector<float> PolynomialRegression::train(std::vector<std::vector<PointF>> 
         weights.emplace_back(ops::Variable{root, {}, tf::DataType::DT_FLOAT});
     }
 
-    // Define model y = w6*x^6+w5*x^5+w4*x^4+w3*x^3+w2*x^2+w1*x
+    // Define model y = w5*x^5+w4*x^4+w3*x^3+w2*x^2+w1*x^1+w0
     auto predictionFunction = [&root, &weights](const ops::Placeholder& X) -> tf::Output {
         std::vector<tf::Output> terms;
         for (float i = 0; i < COEFFS_COUNT; i++) {
             auto term = ops::Multiply(root, weights[i], ops::Pow(root, X, i));
             terms.push_back(term);
         }
-        
+
         return ops::AddN(root, terms);
     };
 
@@ -131,8 +105,8 @@ std::vector<float> PolynomialRegression::train(std::vector<std::vector<PointF>> 
     // Start training
     for (int epoch = 0; epoch < TRAINING_EPOCHS; epoch++) {
         float totalCost = 0.0f;
-        for (int i = 0; i < trainPoints.size(); i++) {
-            tf::ClientSession::FeedType feedType{{X, trainPoints[i].x}, {Y, trainPoints[i].y}};
+        for (int i = 0; i < matrix.cols(); i++) {
+            tf::ClientSession::FeedType feedType{{X, matrix(0, i)}, {Y, matrix(1, i)}};
             TF_CHECK_OK(session.Run(feedType, updateOps, &outputs));
             totalCost += outputs[6].scalar<float>()();
         }
@@ -152,7 +126,7 @@ std::vector<float> PolynomialRegression::train(std::vector<std::vector<PointF>> 
         std::cerr << "Coefficients: ";
     }
 
-    std::vector<float> weightsResult(COEFFS_COUNT);
+    Eigen::Matrix<float, 6, 1> weightsResult(COEFFS_COUNT);
     for (int i = 0; i < COEFFS_COUNT; i++) {
         TF_CHECK_OK(session.Run({weights[i]}, &outputs));
         weightsResult[i] = outputs[0].scalar<float>()();
@@ -166,4 +140,4 @@ std::vector<float> PolynomialRegression::train(std::vector<std::vector<PointF>> 
     return weightsResult;
 }
 
-}  // namespace regression
+}  // namespace regression::polynomial

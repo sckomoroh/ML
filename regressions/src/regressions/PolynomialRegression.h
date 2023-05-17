@@ -7,19 +7,19 @@
 
 #include <vector>
 
-#include "Common/Types.h"
-#include "IRegression.h"
+#include "tensorflow/core/framework/tensor.h"
 
-namespace regression {
+namespace regression::polynomial {
 
-class PolynomialRegression : public IRegression {
-public:  // IRegression
-    float function(std::vector<float> k, float X) override;
+constexpr int POINTS_COUNT = 100;
 
-    std::vector<std::vector<common::PointF>> generateData() override;
+using InputMatrix = Eigen::Matrix<float, 2, POINTS_COUNT>;
 
-    std::vector<float> train(std::vector<std::vector<common::PointF>> points,
-                             bool log = false) override;
+InputMatrix generateData();
+
+class PolynomialRegression {
+public:
+    Eigen::Matrix<float, 6, 1> train(const InputMatrix& matrix, bool log = false);
 };
 
-}  // namespace regression
+}  // namespace regression::polynomial

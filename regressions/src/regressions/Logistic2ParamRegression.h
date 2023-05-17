@@ -7,27 +7,28 @@
 
 #include <vector>
 
-#include "IRegression.h"
-#include "Common/Types.h"
+#include "tensorflow/core/framework/tensor.h"
 
-namespace regression {
+namespace regression::logistic2d {
+
+constexpr int POINTS_COUNT = 100;
+
+using InputMatrix = Eigen::Matrix<float, 3, POINTS_COUNT>;
+
+InputMatrix generateData();
 
 /**
  * @brief Predicts belonging to one of the sets by 2 parameters
- * 
+ *
  * Predicts belonging to one of the sets by 2 parameters.
  * The regression equation  for 2 parameter is w0 + w1*param1 + w2*param2
- * 
+ *
  * If you have more than 2 parameter so the equation will be like
  * w0 + w1*param1 + w2*param2 + ... + wN*paramN
  */
-class Logistic2ParamRegression : public IRegression {
-public:  // IRegression
-    float function(std::vector<float> k, float X) override;
-
-    std::vector<std::vector<common::PointF>> generateData() override;
-
-    std::vector<float> train(std::vector<std::vector<common::PointF>> points, bool log = false) override;
+class Logistic2ParamRegression {
+public:
+    Eigen::Vector3f train(const InputMatrix& matrix, bool log = false);
 };
 
-}  // namespace regression
+}  // namespace regression::logistic2d

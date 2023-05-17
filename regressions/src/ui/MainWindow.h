@@ -17,12 +17,28 @@ class MainWindow : public QMainWindow {
     Q_OBJECT
 public:
     struct Function {
+        Function(const QColor& color = Qt::black)
+            : mColor{color}
+        {
+        }
+
+        Function(const QColor& color, std::function<double(double)> func)
+            : mColor{color}
+            , mFunction{func}
+        {
+        }
+        
         std::function<double(double)> mFunction;
         QList<QPointF> mData;
         QColor mColor;
     };
 
     struct Data {
+        Data(const QColor& color = Qt::black)
+            : mColor{color}
+        {
+        }
+
         std::vector<QPointF> mData;
         QList<QPointF> mScailedData;
         QColor mColor;

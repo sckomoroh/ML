@@ -13,57 +13,35 @@
 #include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/framework/gradients.h"
 #include "tensorflow/cc/ops/standard_ops.h"
-#include "tensorflow/core/framework/tensor.h"
 
-namespace regression {
+namespace regression::logistic {
 
 namespace tf = tensorflow;
 namespace ops = tensorflow::ops;
 
-using common::PointF;
-
-constexpr int SAMPLES_COUNT = 100;
-constexpr float LEARNING_RATE = 0.001;
-constexpr int TRAINING_EPOCHS = 1000;
+constexpr float LEARNING_RATE = 0.01;
+constexpr int TRAINING_EPOCHS = 5000;
 constexpr float SENSITIVE_GATE = 0.0001;  // 0.01%
-constexpr float LAMBDA = 0.01;
+constexpr float LAMBDA = 0.001;
 
-float LogisticRegression::function(std::vector<float> k, float x)
+InputMatrix generateData()
 {
-    return 1.0f / (1.0f + exp(-x));
-}
-
-std::vector<std::vector<PointF>> LogisticRegression::generateData()
-{
-    std::vector<PointF> rightPoints;
-    std::vector<PointF> leftPoints;
-
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::normal_distribution<> dist1(-4, 2);
-    std::normal_distribution<> dist2(4, 2);
-
-    leftPoints.resize(SAMPLES_COUNT);
-    rightPoints.resize(SAMPLES_COUNT);
-
-    for (int i = 0; i < SAMPLES_COUNT; ++i) {
-        leftPoints[i].x = dist1(gen);
-        leftPoints[i].y = 0.0;
+    InputMatrix matrix = InputMatrix::Zero();
+    for (auto i = 0; i < matrix.cols() / 2; i++) {
+        matrix(0, i) = Eigen::internal::random<float>(-0.5f, +0.5f) - 1.0f;
+        matrix(1, i) = 0.0f;
     }
 
-    for (int i = 0; i < SAMPLES_COUNT; ++i) {
-        rightPoints[i].x = dist2(gen);
-        rightPoints[i].y = 1.0;
+    for (auto i = matrix.cols() / 2; i < matrix.cols(); i++) {
+        matrix(0, i) = Eigen::internal::random<float>(-0.5f, +0.5f) + 1.0f;
+        matrix(1, i) = 1.0f;
     }
 
-    return {leftPoints, rightPoints};
+    return matrix;
 }
 
-std::vector<float> LogisticRegression::train(std::vector<std::vector<PointF>> points,
-                                             bool log)
+Eigen::Vector2f LogisticRegression::train(const InputMatrix& matrix, bool log)
 {
-    auto trainPoints = points[0];
-
     tf::Scope root = tf::Scope::NewRootScope();
 
     auto Param = ops::Placeholder(root, tf::DataType::DT_FLOAT);
@@ -73,6 +51,7 @@ std::vector<float> LogisticRegression::train(std::vector<std::vector<PointF>> po
     auto weight0 = ops::Slice(root, weight, {0}, {1});
     auto weight1 = ops::Slice(root, weight, {1}, {1});
 
+    // y = sigmoid(w0 + x*w1)
     auto predictionOp =
         ops::Sigmoid(root, ops::Add(root, ops::Multiply(root, weight1, Param), weight0));
 
@@ -101,14 +80,14 @@ std::vector<float> LogisticRegression::train(std::vector<std::vector<PointF>> po
     float prevCost = 0.0f;
     for (int epoch = 0; epoch < TRAINING_EPOCHS; epoch++) {
         float totalCost = 0.0f;
-        for (int i = 0; i < trainPoints.size(); i++) {
-            tf::ClientSession::FeedType feedType{{Param, trainPoints[i].x}, {Y, trainPoints[i].y}};
+        for (int i = 0; i < matrix.cols(); i++) {
+            tf::ClientSession::FeedType feedType{{Param, matrix(0, i)}, {Y, matrix(1, i)}};
             TF_CHECK_OK(session.Run(feedType, {trainOp, costOp}, &outputs));
             float costValue = outputs[1].scalar<float>()();
             totalCost += costValue;
         }
 
-        totalCost /= trainPoints.size();
+        totalCost /= matrix.cols();
 
         if (log) {
             std::cerr << "Previos cost: " << prevCost << " Current cost: " << totalCost
@@ -135,4 +114,4 @@ std::vector<float> LogisticRegression::train(std::vector<std::vector<PointF>> po
     return {outputs[0].scalar<float>()(), outputs[1].scalar<float>()()};
 }
 
-}  // namespace regression
+}  // namespace regression::logistic
