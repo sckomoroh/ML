@@ -7,18 +7,19 @@
 
 #include <vector>
 
-#include "IRegression.h"
-#include "Common/Types.h"
+#include "tensorflow/core/framework/tensor.h"
 
-namespace regression {
+namespace regression::linear {
 
-class LinearRegression : public IRegression {
-public:  // IRegression
-    float function(std::vector<float> k, float X) override;
+constexpr int POINTS_COUNT = 100;
 
-    std::vector<std::vector<common::PointF>> generateData() override;
+using InputMatrix = Eigen::Matrix<float, 2, Eigen::Dynamic>;
 
-    std::vector<float> train(std::vector<std::vector<common::PointF>> points, bool log = false) override;
+InputMatrix generateData();
+
+class LinearRegression {
+public:
+    Eigen::Vector2f train(const InputMatrix& matrix, bool log = false);
 };
 
-}  // namespace regression
+}  // namespace regression::linear

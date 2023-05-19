@@ -11,44 +11,33 @@
 #include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/framework/gradients.h"
 #include "tensorflow/cc/ops/standard_ops.h"
-#include "tensorflow/core/framework/tensor.h"
-
-#include "Common/Utils.h"
+#include "tensorflow/core/util/events_writer.h"
 
 namespace tf = tensorflow;
 namespace ops = tensorflow::ops;
 
-using common::PointF;
+namespace regression::linear {
 
-namespace regression {
-
-constexpr float LEARNING_RATE = 0.01;
-constexpr int TRAINING_EPOCHS = 100;
-constexpr int POINTS_COUNT = 101;
+constexpr float LEARNING_RATE = 0.001;
+constexpr int TRAINING_EPOCHS = 1000;
 constexpr float LAMBDA = 0.01;
 
-float LinearRegression::function(std::vector<float> k, float X) { return k[0] * X + k[1]; }
-
-std::vector<std::vector<PointF>> LinearRegression::generateData()
+InputMatrix generateData()
 {
-    std::vector<PointF> points = common::Utils::generateRange<PointF>(
-        -1.0f, 1.0f, 101, [](PointF& item, float value) { item.x = value; });
-
-    for (int i = 0; i < POINTS_COUNT; ++i) {
-        points[i].y += 2 * points[i].x + 4;
+    InputMatrix matrix;
+    matrix.resize(2, POINTS_COUNT);
+    matrix.setZero();
+    matrix.row(0) = Eigen::VectorXf::LinSpaced(POINTS_COUNT, 1.0f, 5.0f);
+    for (int i = 0; i < matrix.cols(); ++i) {
+        matrix(1, i) =
+            Eigen::internal::random<float>(matrix(0, i) - 0.5f, matrix(0, i) + 0.5) + 5.0f;
     }
 
-    common::Utils::randomizeData<PointF>(points, 0.0f, 0.33f,
-                                         [](PointF& item, float value) { item.y += value; });
-
-    return {points};
+    return matrix;
 }
 
-std::vector<float> LinearRegression::train(std::vector<std::vector<PointF>> points,
-                                           bool log)
+Eigen::Vector2f LinearRegression::train(const InputMatrix& matrix, bool log)
 {
-    auto trainPoints = points[0];
-
     tf::Scope root = tf::Scope::NewRootScope();
 
     auto X = ops::Placeholder(root, tf::DataType::DT_FLOAT);
@@ -58,7 +47,8 @@ std::vector<float> LinearRegression::train(std::vector<std::vector<PointF>> poin
     auto weight0 = ops::Slice(root, weight, {0}, {1});
     auto weight1 = ops::Slice(root, weight, {1}, {1});
 
-    auto predictionOp = ops::Add(root, ops::Multiply(root, X, weight0), weight1);
+    // Y = x * w0 + w1
+    tf::Input predictionOp = ops::Add(root, ops::Multiply(root, X, weight0), weight1);
 
     // To avoid overweight
     // I dodn't know why but with using the ops::Square crashes the program
@@ -83,8 +73,8 @@ std::vector<float> LinearRegression::train(std::vector<std::vector<PointF>> poin
 
     std::vector<tf::Tensor> outputs;
     for (int epoch = 0; epoch < TRAINING_EPOCHS; epoch++) {
-        for (int i = 0; i < trainPoints.size(); i++) {
-            tf::ClientSession::FeedType feedType{{X, trainPoints[i].x}, {Y, trainPoints[i].y}};
+        for (int i = 0; i < matrix.cols(); i++) {
+            tf::ClientSession::FeedType feedType{{X, matrix(0, i)}, {Y, matrix(1, i)}};
             TF_CHECK_OK(session.Run(feedType, {trainOp, costOp}, &outputs));
         }
 
@@ -99,13 +89,13 @@ std::vector<float> LinearRegression::train(std::vector<std::vector<PointF>> poin
 
     TF_CHECK_OK(session.Run({weight0, weight1}, &outputs));
 
-    float k1 = outputs[0].scalar<float>()();
-    float k2 = outputs[1].scalar<float>()();
+    float k0 = outputs[0].scalar<float>()();
+    float k1 = outputs[1].scalar<float>()();
     if (log) {
-        std::cerr << "Coefficient: " << k1 << "," << k2 << std::endl;
+        std::cerr << "Coefficient: " << k0 << "," << k1 << std::endl;
     }
 
-    return {k1, k2};
+    return {k0, k1};
 }
 
-}  // namespace regression
+}  // namespace regression::linear

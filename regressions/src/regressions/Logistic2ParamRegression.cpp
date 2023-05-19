@@ -13,72 +13,38 @@
 #include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/framework/gradients.h"
 #include "tensorflow/cc/ops/standard_ops.h"
-#include "tensorflow/core/framework/tensor.h"
 
-namespace regression {
+namespace regression::logistic2d {
 
 namespace tf = tensorflow;
 namespace ops = tensorflow::ops;
 
-using common::PointF;
-
-constexpr int POINTS_COUNT = 500;
 constexpr float LEARNING_RATE = 0.001;
 constexpr int TRAINING_EPOCHS = 2000;
 constexpr float SENSITIVE_GATE = 0.0001;  // 0.01%
 constexpr float LAMBDA = 0.0001;
 
-float Logistic2ParamRegression::function(std::vector<float> k, float X)
+InputMatrix generateData()
 {
-    // The value cumputes outside
-    return 0.0f;
+    InputMatrix matrix = InputMatrix::Zero();
+    float distance = 3.5f;
+    for (auto i = 0; i < matrix.cols() / 2; i++) {
+        matrix(0, i) = Eigen::internal::random<float>(-distance, distance) - 3.0f;
+        matrix(1, i) = Eigen::internal::random<float>(-distance, distance) + 5.0f;
+        matrix(2, i) = 0.0f;
+    }
+
+    for (auto i = matrix.cols() / 2; i < matrix.cols(); i++) {
+        matrix(0, i) = Eigen::internal::random<float>(-distance, distance) + 5.0f;
+        matrix(1, i) = Eigen::internal::random<float>(-distance, distance) - 2.0f;
+        matrix(2, i) = 1.0f;
+    }
+
+    return matrix;
 }
 
-std::vector<std::vector<PointF>> Logistic2ParamRegression::generateData()
+Eigen::Vector3f Logistic2ParamRegression::train(const InputMatrix& matrix, bool log)
 {
-    std::vector<PointF> leftPoints;
-    std::vector<PointF> rightPoints;
-    leftPoints.resize(POINTS_COUNT);
-    rightPoints.resize(POINTS_COUNT);
-
-    std::random_device rd;
-    std::mt19937 gen(rd());
-
-    std::normal_distribution<> distLeftX(3, 1);
-    std::normal_distribution<> distLeftY(2, 1);
-    std::normal_distribution<> distRightX(7, 1);
-    std::normal_distribution<> distRightY(6, 1);
-
-    for (int i = 0; i < POINTS_COUNT; ++i) {
-        leftPoints[i].x = distLeftX(gen);
-        leftPoints[i].y = distLeftY(gen);
-        rightPoints[i].x = distRightX(gen);
-        rightPoints[i].y = distRightY(gen);
-    }
-
-    return {leftPoints, rightPoints};
-}
-
-std::vector<float> Logistic2ParamRegression::train(std::vector<std::vector<PointF>> points,
-                                                   bool log)
-{
-    std::vector<float> x1s(POINTS_COUNT * 2);
-    std::vector<float> x2s(POINTS_COUNT * 2);
-    std::vector<float> ys(POINTS_COUNT * 2);
-
-    // Preprocess the input data
-    for (auto i = 0; i < points[0].size(); i++) {
-        x1s[i] = points[0][i].x;  // Param 1
-        x2s[i] = points[0][i].y;  // Param 2
-        ys[i] = 0.0f;
-    }
-
-    for (auto i = 0; i < points[1].size(); i++) {
-        x1s[i + POINTS_COUNT] = points[1][i].x;  // Param 1
-        x2s[i + POINTS_COUNT] = points[1][i].y;  // Param 2
-        ys[i + POINTS_COUNT] = 1.0f;
-    }
-
     tf::Scope root = tf::Scope::NewRootScope();
 
     auto Param1 = ops::Placeholder(root, tf::DataType::DT_FLOAT);
@@ -127,8 +93,9 @@ std::vector<float> Logistic2ParamRegression::train(std::vector<std::vector<Point
     float prevCost = 0.0f;
     for (int epoch = 0; epoch < TRAINING_EPOCHS; epoch++) {
         float totalCost = 0.0f;
-        for (int i = 0; i < x1s.size(); i++) {
-            tf::ClientSession::FeedType feedType{{Param1, x1s[i]}, {Param2, x2s[i]}, {YS, ys[i]}};
+        for (int i = 0; i < matrix.cols(); i++) {
+            tf::ClientSession::FeedType feedType{
+                {Param1, matrix(0, i)}, {Param2, matrix(1, i)}, {YS, matrix(2, i)}};
             TF_CHECK_OK(session.Run(feedType, {trainOp, costOp}, &outputs));
             float costValue = outputs[1].scalar<float>()();
             totalCost += costValue;
@@ -152,8 +119,15 @@ std::vector<float> Logistic2ParamRegression::train(std::vector<std::vector<Point
 
     TF_CHECK_OK(session.Run({weight0, weight1, weight2}, &outputs));
 
+    if (log) {
+        std::cerr << "Coefficients: "
+                  << "K0: " << outputs[0].scalar<float>()()
+                  << " K1: " << outputs[1].scalar<float>()()
+                  << " K2: " << outputs[2].scalar<float>()() << std::endl;
+    }
+
     return {outputs[0].scalar<float>()(), outputs[1].scalar<float>()(),
             outputs[2].scalar<float>()()};
 }
 
-}  // namespace regression
+}  // namespace regression::logistic2d
