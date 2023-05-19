@@ -1,25 +1,35 @@
-/**
- * Copyright 2023
- * Author: Yehor Zvihunov
- **/
-
 #pragma once
 
-#include <vector>
+#include "tensorflow/cc/framework/scope.h"
+#include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/cc/client/client_session.h"
 
-#include "tensorflow/core/framework/tensor.h"
+namespace regression {
 
-namespace regression::linear {
-
+namespace linear {
 constexpr int POINTS_COUNT = 100;
 
 using InputMatrix = Eigen::Matrix<float, 2, Eigen::Dynamic>;
-
-InputMatrix generateData();
+}  // namespace linear
 
 class LinearRegression {
+private:
+    tensorflow::Scope mRoot;
+    tensorflow::ops::Variable mWeights;
+    tensorflow::ClientSession mSession;
+
 public:
-    Eigen::Vector2f train(const InputMatrix& matrix, bool log = false);
+    LinearRegression();
+
+public:
+    void trainModel(const linear::InputMatrix& matrix, bool log = false);
+
+    float getPrediction(float value);
+
+    static void demonstrate();
+
+private:
+    tensorflow::Output model(const tensorflow::ops::Placeholder& placeholder);
 };
 
-}  // namespace regression::linear
+}  // namespace regression

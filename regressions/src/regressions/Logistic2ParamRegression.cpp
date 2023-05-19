@@ -5,16 +5,13 @@
 
 #include "Logistic2ParamRegression.h"
 
-#include <cmath>
-
 #include <iostream>
-#include <random>
 
-#include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/framework/gradients.h"
-#include "tensorflow/cc/ops/standard_ops.h"
 
-namespace regression::logistic2d {
+namespace regression {
+
+using namespace logistic2d;
 
 namespace tf = tensorflow;
 namespace ops = tensorflow::ops;
@@ -24,70 +21,49 @@ constexpr int TRAINING_EPOCHS = 2000;
 constexpr float SENSITIVE_GATE = 0.0001;  // 0.01%
 constexpr float LAMBDA = 0.0001;
 
-InputMatrix generateData()
+Logistic2ParamRegression::Logistic2ParamRegression()
+    : mRoot{tf::Scope::NewRootScope()}
+    , mWeights{mRoot, {3}, tf::DataType::DT_FLOAT}
+    , mSession{mRoot}
 {
-    InputMatrix matrix = InputMatrix::Zero();
-    float distance = 3.5f;
-    for (auto i = 0; i < matrix.cols() / 2; i++) {
-        matrix(0, i) = Eigen::internal::random<float>(-distance, distance) - 3.0f;
-        matrix(1, i) = Eigen::internal::random<float>(-distance, distance) + 5.0f;
-        matrix(2, i) = 0.0f;
-    }
-
-    for (auto i = matrix.cols() / 2; i < matrix.cols(); i++) {
-        matrix(0, i) = Eigen::internal::random<float>(-distance, distance) + 5.0f;
-        matrix(1, i) = Eigen::internal::random<float>(-distance, distance) - 2.0f;
-        matrix(2, i) = 1.0f;
-    }
-
-    return matrix;
 }
 
-Eigen::Vector3f Logistic2ParamRegression::train(const InputMatrix& matrix, bool log)
+void Logistic2ParamRegression::trainModel(const InputMatrix& matrix, bool log)
 {
-    tf::Scope root = tf::Scope::NewRootScope();
+    auto w0 = ops::Slice(mRoot, mWeights, {0}, {1});
+    auto w1 = ops::Slice(mRoot, mWeights, {1}, {1});
+    auto w2 = ops::Slice(mRoot, mWeights, {2}, {1});
 
-    auto Param1 = ops::Placeholder(root, tf::DataType::DT_FLOAT);
-    auto Param2 = ops::Placeholder(root, tf::DataType::DT_FLOAT);
-    auto YS = ops::Placeholder(root, tf::DataType::DT_FLOAT);
+    auto Param1 = ops::Placeholder(mRoot, tf::DataType::DT_FLOAT);
+    auto Param2 = ops::Placeholder(mRoot, tf::DataType::DT_FLOAT);
+    auto YS = ops::Placeholder(mRoot, tf::DataType::DT_FLOAT);
 
-    auto weight = ops::Variable(root.WithOpName("parameter"), {3}, tf::DataType::DT_FLOAT);
-
-    auto weight0 = ops::Slice(root, weight, {0}, {1});
-    auto weight1 = ops::Slice(root, weight, {1}, {1});
-    auto weight2 = ops::Slice(root, weight, {2}, {1});
-
-    // tf.sigmoid(w[2] * x2s + w[1] * x1s + w[0])
-    auto model = ops::Sigmoid(
-        root,
-        ops::AddN(root, std::vector<tf::Output>{ops::Multiply(root, weight2, Param2),
-                                                ops::Multiply(root, weight1, Param1), weight0}));
+    auto predictionOp = model(Param1, Param2);
 
     // To avoid owerweight
-    auto L2Regularization =
-        ops::Multiply(root, {LAMBDA},
-                      ops::AddN(root, std::vector<tf::Output>{ops::Square(root, weight0),
-                                                              ops::Square(root, weight1),
-                                                              ops::Square(root, weight2)}));
+    auto L2Regularization = ops::Multiply(
+        mRoot, {LAMBDA},
+        ops::AddN(mRoot, std::vector<tf::Output>{ops::Square(mRoot, w0), ops::Square(mRoot, w1),
+                                                 ops::Square(mRoot, w2)}));
 
     // -tf.reduce_mean(tf.math.log(y_model * ys + (1 - y_model) * (1 - ys)))
     tf::Output costOp;
     costOp = ops::Neg(
-        root, ops::Log(root, ops::Add(root, ops::Multiply(root, model, YS),
-                                      ops::Multiply(root, ops::Subtract(root, {1.0f}, model),
-                                                    ops::Subtract(root, {1.0f}, YS)))));
+        mRoot,
+        ops::Log(mRoot, ops::Add(mRoot, ops::Multiply(mRoot, predictionOp, YS),
+                                 ops::Multiply(mRoot, ops::Subtract(mRoot, {1.0f}, predictionOp),
+                                               ops::Subtract(mRoot, {1.0f}, YS)))));
 
-    costOp = ops::Add(root, L2Regularization, costOp);
+    costOp = ops::Add(mRoot, L2Regularization, costOp);
 
     std::vector<tf::Output> gradients;
     std::vector<tf::Output> weightOutputs;
-    weightOutputs.push_back(weight);
-    TF_CHECK_OK(tf::AddSymbolicGradients(root, {costOp}, weightOutputs, &gradients));
+    weightOutputs.push_back(mWeights);
+    TF_CHECK_OK(tf::AddSymbolicGradients(mRoot, {costOp}, weightOutputs, &gradients));
 
-    auto trainOp = ops::ApplyGradientDescent(root, weight, LEARNING_RATE, gradients[0]);
+    auto trainOp = ops::ApplyGradientDescent(mRoot, mWeights, LEARNING_RATE, gradients[0]);
 
-    tf::ClientSession session{root};
-    TF_CHECK_OK(session.Run({ops::Assign(root, weight, {0.0f, 0.0f, 0.0f})}, nullptr));
+    TF_CHECK_OK(mSession.Run({ops::Assign(mRoot, mWeights, {0.0f, 0.0f, 0.0f})}, nullptr));
 
     std::vector<tf::Tensor> outputs;
     float prevCost = 0.0f;
@@ -96,7 +72,7 @@ Eigen::Vector3f Logistic2ParamRegression::train(const InputMatrix& matrix, bool 
         for (int i = 0; i < matrix.cols(); i++) {
             tf::ClientSession::FeedType feedType{
                 {Param1, matrix(0, i)}, {Param2, matrix(1, i)}, {YS, matrix(2, i)}};
-            TF_CHECK_OK(session.Run(feedType, {trainOp, costOp}, &outputs));
+            TF_CHECK_OK(mSession.Run(feedType, {trainOp, costOp}, &outputs));
             float costValue = outputs[1].scalar<float>()();
             totalCost += costValue;
         }
@@ -117,7 +93,7 @@ Eigen::Vector3f Logistic2ParamRegression::train(const InputMatrix& matrix, bool 
         prevCost = totalCost;
     }
 
-    TF_CHECK_OK(session.Run({weight0, weight1, weight2}, &outputs));
+    TF_CHECK_OK(mSession.Run({w0, w1, w2}, &outputs));
 
     if (log) {
         std::cerr << "Coefficients: "
@@ -125,9 +101,130 @@ Eigen::Vector3f Logistic2ParamRegression::train(const InputMatrix& matrix, bool 
                   << " K1: " << outputs[1].scalar<float>()()
                   << " K2: " << outputs[2].scalar<float>()() << std::endl;
     }
-
-    return {outputs[0].scalar<float>()(), outputs[1].scalar<float>()(),
-            outputs[2].scalar<float>()()};
 }
 
-}  // namespace regression::logistic2d
+float sigmoid(float x) { return 1.0 / (1.0 + std::exp(-x)); }
+
+float Logistic2ParamRegression::getPrediction(float val1, float val2, bool useLite)
+{
+    if (useLite) {
+        std::vector<tf::Tensor> outputs;
+
+        TF_CHECK_OK(mSession.Run({mWeights}, &outputs));
+
+        auto w0 = outputs[0].tensor<float, 1>()(0);
+        auto w1 = outputs[0].tensor<float, 1>()(1);
+        auto w2 = outputs[0].tensor<float, 1>()(2);
+
+        return sigmoid(w2 * val2 + w1 * val1 + w0);
+    }
+
+    auto param1 = ops::Placeholder(mRoot.WithOpName("value"), tf::DataType::DT_FLOAT);
+    auto param2 = ops::Placeholder(mRoot.WithOpName("value"), tf::DataType::DT_FLOAT);
+
+    auto m = model(param1, param2);
+
+    std::vector<tf::Tensor> outputs;
+    tf::ClientSession::FeedType feed{{param1, {val1}}, {param2, {val2}}};
+
+    TF_CHECK_OK(mSession.Run(feed, {m}, &outputs));
+
+    return outputs[0].scalar<float>()();
+}
+
+tf::Output Logistic2ParamRegression::model(const tensorflow::ops::Placeholder& placeholder1,
+                                           const tensorflow::ops::Placeholder& placeholde2)
+{
+    // tf.sigmoid(w[2] * x2s + w[1] * x1s + w[0])
+
+    auto w0 = ops::Slice(mRoot, mWeights, {0}, {1});
+    auto w1 = ops::Slice(mRoot, mWeights, {1}, {1});
+    auto w2 = ops::Slice(mRoot, mWeights, {2}, {1});
+
+    return ops::Sigmoid(mRoot, ops::AddN(mRoot, std::vector<tf::Output>{
+                                                    ops::Multiply(mRoot, w2, placeholde2),
+                                                    ops::Multiply(mRoot, w1, placeholder1), w0}));
+}
+
+void Logistic2ParamRegression::demonstrate(LinearRegression* lineRegression)
+{
+    InputMatrix data = InputMatrix::Zero();
+    float distance = 3.5f;
+    for (auto i = 0; i < data.cols() / 2; i++) {
+        data(0, i) = Eigen::internal::random<float>(-distance, distance) - 3.0f;
+        data(1, i) = Eigen::internal::random<float>(-distance, distance) + 5.0f;
+        data(2, i) = 0.0f;
+    }
+
+    for (auto i = data.cols() / 2; i < data.cols(); i++) {
+        data(0, i) = Eigen::internal::random<float>(-distance, distance) + 5.0f;
+        data(1, i) = Eigen::internal::random<float>(-distance, distance) - 2.0f;
+        data(2, i) = 1.0f;
+    }
+
+    Logistic2ParamRegression regression;
+    regression.trainModel(data);
+
+    FILE* pipe = popen("gnuplot -persist", "w");
+
+    if (lineRegression) {
+        fprintf(pipe,
+                "plot '-' with points pt 7 lc rgb 'red', '-' with points pt 7 lc rgb 'green', "
+                "'-' with lines lc rgb 'blue'\n");
+    }
+    else {
+        fprintf(pipe,
+                "plot '-' with points pt 7 lc rgb 'red', '-' with points pt 7 lc rgb 'green', "
+                "'-' with points lc rgb 'blue'\n");
+    }
+
+    for (auto i = 0; i < data.cols() / 2; i++) {
+        auto x = data(0, i);
+        auto y = data(1, i);
+        fprintf(pipe, "%f %f\n", x, y);
+    }
+
+    fprintf(pipe, "e\n");
+
+    for (auto i = data.cols() / 2; i < data.cols(); i++) {
+        auto x = data(0, i);
+        auto y = data(1, i);
+        fprintf(pipe, "%f %f\n", x, y);
+    }
+
+    fprintf(pipe, "e\n");
+
+    linear::InputMatrix lineMatrix;
+    Eigen::Vector<float, POINTS_COUNT> x1 = Eigen::VectorXf::LinSpaced(POINTS_COUNT, -6.0f, 6.0f);
+    Eigen::Vector<float, POINTS_COUNT> x2 = Eigen::VectorXf::LinSpaced(POINTS_COUNT, -6.0f, 6.0f);
+    for (auto i = 0; i < x1.rows(); i++) {
+        for (auto j = 0; j < x2.rows(); j++) {
+            auto z = regression.getPrediction(x1(i), x2(j));
+            if (abs(z - 0.5f) < 0.01f) {
+                if (!lineRegression) {
+                    fprintf(pipe, "%f %f\n", x1(i), x2(j));
+                }
+                else {
+                    lineMatrix.conservativeResize(lineMatrix.rows(), lineMatrix.cols() + 1);
+                    lineMatrix(0, lineMatrix.cols() - 1) = x1(i);
+                    lineMatrix(1, lineMatrix.cols() - 1) = x2(j);
+                }
+            }
+        }
+    }
+
+    if (lineRegression) {
+        lineRegression->trainModel(lineMatrix);
+        for (float x = -6.5f; x < 6.5f; x += 0.1f) {
+            auto y = lineRegression->getPrediction(x);
+            fprintf(pipe, "%f %f\n", x, y);
+        }
+    }
+
+    fprintf(pipe, "e\n");
+
+    fflush(pipe);
+    fclose(pipe);
+}
+
+}  // namespace regression
