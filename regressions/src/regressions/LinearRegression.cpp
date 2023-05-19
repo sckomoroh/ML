@@ -1,101 +1,124 @@
-/**
- * Copyright 2023
- * Author: Yehor Zvihunov
- **/
-
 #include "LinearRegression.h"
 
-#include <iostream>
-#include <vector>
-
-#include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/framework/gradients.h"
-#include "tensorflow/cc/ops/standard_ops.h"
-#include "tensorflow/core/util/events_writer.h"
+#include "tensorflow/core/framework/tensor.h"
+
+namespace regression {
+
+using namespace regression::linear;
 
 namespace tf = tensorflow;
 namespace ops = tensorflow::ops;
-
-namespace regression::linear {
 
 constexpr float LEARNING_RATE = 0.001;
 constexpr int TRAINING_EPOCHS = 1000;
 constexpr float LAMBDA = 0.01;
 
-InputMatrix generateData()
+LinearRegression::LinearRegression()
+    : mRoot{tf::Scope::NewRootScope()}
+    , mWeights{ops::Variable(mRoot.WithOpName("Weights"), {2}, tf::DataType::DT_FLOAT)}
+    , mSession{mRoot}
 {
-    InputMatrix matrix;
-    matrix.resize(2, POINTS_COUNT);
-    matrix.setZero();
-    matrix.row(0) = Eigen::VectorXf::LinSpaced(POINTS_COUNT, 1.0f, 5.0f);
-    for (int i = 0; i < matrix.cols(); ++i) {
-        matrix(1, i) =
-            Eigen::internal::random<float>(matrix(0, i) - 0.5f, matrix(0, i) + 0.5) + 5.0f;
-    }
-
-    return matrix;
 }
 
-Eigen::Vector2f LinearRegression::train(const InputMatrix& matrix, bool log)
+void LinearRegression::trainModel(const linear::InputMatrix& matrix, bool log)
 {
-    tf::Scope root = tf::Scope::NewRootScope();
+    auto X = ops::Placeholder(mRoot, tf::DataType::DT_FLOAT);
+    auto Y = ops::Placeholder(mRoot, tf::DataType::DT_FLOAT);
 
-    auto X = ops::Placeholder(root, tf::DataType::DT_FLOAT);
-    auto Y = ops::Placeholder(root, tf::DataType::DT_FLOAT);
+    auto w0 = ops::Slice(mRoot, mWeights, {0}, {1});
+    auto w1 = ops::Slice(mRoot, mWeights, {1}, {1});
 
-    auto weight = ops::Variable(root, {2}, tf::DataType::DT_FLOAT);
-    auto weight0 = ops::Slice(root, weight, {0}, {1});
-    auto weight1 = ops::Slice(root, weight, {1}, {1});
+    auto L2Regularization =
+        ops::Multiply(mRoot, {LAMBDA},
+                      ops::AddN(mRoot, std::vector<tf::Output>{ops::Multiply(mRoot, w0, w0),
+                                                               ops::Multiply(mRoot, w1, w1)}));
 
-    // Y = x * w0 + w1
-    tf::Input predictionOp = ops::Add(root, ops::Multiply(root, X, weight0), weight1);
+    auto predictionOp = model(X);
+    auto costOp = ops::Add(mRoot, L2Regularization,
+                           ops::Square(mRoot, ops::Subtract(mRoot, Y, predictionOp)));
 
-    // To avoid overweight
-    // I dodn't know why but with using the ops::Square crashes the program
-    auto L2Regularization = ops::Multiply(
-        root, {LAMBDA},
-        ops::AddN(root, std::vector<tf::Output>{ops::Multiply(root, weight0, weight0),
-                                                ops::Multiply(root, weight1, weight1)}));
-
-    tf::Output costOp = ops::Square(root, ops::Subtract(root, Y, predictionOp));
-    costOp = ops::Add(root, costOp, L2Regularization);
-
+    std::vector<tf::Output> weightOutputs{mWeights};
     std::vector<tf::Output> gradients;
-    std::vector<tf::Output> weightOutputs;
-    weightOutputs.push_back(weight);
+    TF_CHECK_OK(tf::AddSymbolicGradients(mRoot, {costOp}, weightOutputs, &gradients));
+    auto trainOp = ops::ApplyGradientDescent(mRoot, mWeights, LEARNING_RATE, gradients[0]);
 
-    TF_CHECK_OK(tf::AddSymbolicGradients(root, {costOp}, weightOutputs, &gradients));
-
-    auto trainOp = ops::ApplyGradientDescent(root, weight, LEARNING_RATE, gradients[0]);
-
-    tf::ClientSession session{root};
-    TF_CHECK_OK(session.Run({ops::Assign(root, weight, {0.0f, 0.0f})}, nullptr));
+    TF_CHECK_OK(mSession.Run({ops::Assign(mRoot, mWeights, {0.0f, 0.0f})}, nullptr));
 
     std::vector<tf::Tensor> outputs;
     for (int epoch = 0; epoch < TRAINING_EPOCHS; epoch++) {
         for (int i = 0; i < matrix.cols(); i++) {
             tf::ClientSession::FeedType feedType{{X, matrix(0, i)}, {Y, matrix(1, i)}};
-            TF_CHECK_OK(session.Run(feedType, {trainOp, costOp}, &outputs));
+            TF_CHECK_OK(mSession.Run(feedType, {trainOp, costOp}, &outputs));
         }
 
         if (log) {
             float costValue = outputs[1].scalar<float>()();
-            TF_CHECK_OK(session.Run({weight0, weight1}, &outputs));
+            TF_CHECK_OK(mSession.Run({w0, w1}, &outputs));
             float k1 = outputs[0].scalar<float>()();
             float k2 = outputs[1].scalar<float>()();
             std::cerr << "Coeffs: " << k1 << "," << k2 << " Cost: " << costValue << std::endl;
         }
     }
-
-    TF_CHECK_OK(session.Run({weight0, weight1}, &outputs));
-
-    float k0 = outputs[0].scalar<float>()();
-    float k1 = outputs[1].scalar<float>()();
-    if (log) {
-        std::cerr << "Coefficient: " << k0 << "," << k1 << std::endl;
-    }
-
-    return {k0, k1};
 }
 
-}  // namespace regression::linear
+float LinearRegression::getPrediction(float value)
+{
+    auto X = ops::Placeholder(mRoot.WithOpName("value"), tf::DataType::DT_FLOAT);
+    auto m = model(X);
+
+    std::vector<tf::Tensor> outputs;
+    tf::ClientSession::FeedType feed{{X, {value}}};
+
+    TF_CHECK_OK(mSession.Run(feed, {m}, &outputs));
+
+    return outputs[0].scalar<float>()();
+}
+
+tf::Output LinearRegression::model(const tensorflow::ops::Placeholder& placeholder)
+{
+    // w0 + w1*x
+    auto w0 = ops::Slice(mRoot.WithOpName("w0"), mWeights, {0}, {1});
+    auto w1 = ops::Slice(mRoot.WithOpName("w1"), mWeights, {1}, {1});
+
+    return ops::Add(mRoot, w0, ops::Multiply(mRoot, placeholder, w1));
+}
+
+void LinearRegression::demonstrate()
+{
+    // Data generation
+    InputMatrix data;
+    data.resize(2, POINTS_COUNT);
+    data.setZero();
+    data.row(0) = Eigen::VectorXf::LinSpaced(POINTS_COUNT, 1.0f, 5.0f);
+    for (int i = 0; i < data.cols(); ++i) {
+        data(1, i) = Eigen::internal::random<float>(data(0, i) - 0.5f, data(0, i) + 0.5) + 5.0f;
+    }
+
+    FILE* pipe = popen("gnuplot -persist", "w");
+
+    fprintf(pipe, "plot '-' with points pt 7 lc rgb 'red', '-' with lines lc rgb 'blue'\n");
+
+    for (int i = 0; i < linear::POINTS_COUNT; i++) {
+        auto x = data(0, i);
+        auto y = data(1, i);
+        fprintf(pipe, "%f %f\n", x, y);
+    }
+
+    fprintf(pipe, "e\n");
+
+    // Regression side
+    LinearRegression regression;
+
+    regression.trainModel(data);
+    for (float x = 0.5f; x < 5.5f; x += 0.1f) {
+        auto y = regression.getPrediction(x);
+        fprintf(pipe, "%f %f\n", x, y);
+    }
+
+    fprintf(pipe, "e\n");
+    fflush(pipe);
+    fclose(pipe);
+}
+
+};  // namespace regression

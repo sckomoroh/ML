@@ -10,11 +10,11 @@
 #include <iostream>
 #include <random>
 
-#include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/framework/gradients.h"
-#include "tensorflow/cc/ops/standard_ops.h"
 
-namespace regression::logistic {
+namespace regression {
+
+using namespace logistic;
 
 namespace tf = tensorflow;
 namespace ops = tensorflow::ops;
@@ -24,57 +24,43 @@ constexpr int TRAINING_EPOCHS = 5000;
 constexpr float SENSITIVE_GATE = 0.0001;  // 0.01%
 constexpr float LAMBDA = 0.001;
 
-InputMatrix generateData()
+LogisticRegression::LogisticRegression()
+    : mRoot{tf::Scope::NewRootScope()}
+    , mWeights{mRoot, {2}, tf::DataType::DT_FLOAT}
+    , mSession{mRoot}
 {
-    InputMatrix matrix = InputMatrix::Zero();
-    for (auto i = 0; i < matrix.cols() / 2; i++) {
-        matrix(0, i) = Eigen::internal::random<float>(-0.5f, +0.5f) - 1.0f;
-        matrix(1, i) = 0.0f;
-    }
-
-    for (auto i = matrix.cols() / 2; i < matrix.cols(); i++) {
-        matrix(0, i) = Eigen::internal::random<float>(-0.5f, +0.5f) + 1.0f;
-        matrix(1, i) = 1.0f;
-    }
-
-    return matrix;
 }
 
-Eigen::Vector2f LogisticRegression::train(const InputMatrix& matrix, bool log)
+void LogisticRegression::trainModel(const InputMatrix& matrix, bool log)
 {
-    tf::Scope root = tf::Scope::NewRootScope();
+    auto Param = ops::Placeholder(mRoot, tf::DataType::DT_FLOAT);
+    auto Y = ops::Placeholder(mRoot, tf::DataType::DT_FLOAT);
 
-    auto Param = ops::Placeholder(root, tf::DataType::DT_FLOAT);
-    auto Y = ops::Placeholder(root, tf::DataType::DT_FLOAT);
-    auto weight = ops::Variable(root.WithOpName("parameter"), {2}, tf::DataType::DT_FLOAT);
+    auto w0 = ops::Slice(mRoot, mWeights, {0}, {1});
+    auto w1 = ops::Slice(mRoot, mWeights, {1}, {1});
 
-    auto weight0 = ops::Slice(root, weight, {0}, {1});
-    auto weight1 = ops::Slice(root, weight, {1}, {1});
-
-    // y = sigmoid(w0 + x*w1)
-    auto predictionOp =
-        ops::Sigmoid(root, ops::Add(root, ops::Multiply(root, weight1, Param), weight0));
+    auto predictionOp = model(Param);
 
     // To avoid owerweight
     auto L2Regularization = ops::Multiply(
-        root, {LAMBDA}, ops::Add(root, ops::Square(root, weight0), ops::Square(root, weight1)));
+        mRoot, {LAMBDA}, ops::Add(mRoot, ops::Square(mRoot, w0), ops::Square(mRoot, w1)));
 
     // -Y * tf.log(predictionOp) - (1 - У) * tf.log(l - predictionOp)
-    auto costOp = ops::Add(
-        root, L2Regularization,
-        ops::Subtract(root, ops::Multiply(root, ops::Neg(root, Y), ops::Log(root, predictionOp)),
-                      ops::Multiply(root, ops::Subtract(root, 1.0f, Y),
-                                    ops::Log(root, ops::Subtract(root, 1.0f, predictionOp)))));
+    auto costOp =
+        ops::Add(mRoot, L2Regularization,
+                 ops::Subtract(
+                     mRoot, ops::Multiply(mRoot, ops::Neg(mRoot, Y), ops::Log(mRoot, predictionOp)),
+                     ops::Multiply(mRoot, ops::Subtract(mRoot, 1.0f, Y),
+                                   ops::Log(mRoot, ops::Subtract(mRoot, 1.0f, predictionOp)))));
 
     std::vector<tf::Output> gradients;
     std::vector<tf::Output> weightOutputs;
-    weightOutputs.push_back(weight);
-    TF_CHECK_OK(tf::AddSymbolicGradients(root, {costOp}, weightOutputs, &gradients));
+    weightOutputs.push_back(mWeights);
+    TF_CHECK_OK(tf::AddSymbolicGradients(mRoot, {costOp}, weightOutputs, &gradients));
 
-    auto trainOp = ops::ApplyGradientDescent(root, weight, LEARNING_RATE, gradients[0]);
+    auto trainOp = ops::ApplyGradientDescent(mRoot, mWeights, LEARNING_RATE, gradients[0]);
 
-    tf::ClientSession session{root};
-    TF_CHECK_OK(session.Run({ops::Assign(root, weight, {0.0f, 0.0f})}, nullptr));
+    TF_CHECK_OK(mSession.Run({ops::Assign(mRoot, mWeights, {0.0f, 0.0f})}, nullptr));
 
     std::vector<tf::Tensor> outputs;
     float prevCost = 0.0f;
@@ -82,7 +68,7 @@ Eigen::Vector2f LogisticRegression::train(const InputMatrix& matrix, bool log)
         float totalCost = 0.0f;
         for (int i = 0; i < matrix.cols(); i++) {
             tf::ClientSession::FeedType feedType{{Param, matrix(0, i)}, {Y, matrix(1, i)}};
-            TF_CHECK_OK(session.Run(feedType, {trainOp, costOp}, &outputs));
+            TF_CHECK_OK(mSession.Run(feedType, {trainOp, costOp}, &outputs));
             float costValue = outputs[1].scalar<float>()();
             totalCost += costValue;
         }
@@ -104,14 +90,74 @@ Eigen::Vector2f LogisticRegression::train(const InputMatrix& matrix, bool log)
         prevCost = totalCost;
     }
 
-    TF_CHECK_OK(session.Run({weight0, weight1}, &outputs));
+    TF_CHECK_OK(mSession.Run({mWeights}, &outputs));
 
     if (log) {
         std::cerr << "W0:" << outputs[0].scalar<float>()()
                   << " W1: " << outputs[1].scalar<float>()() << std::endl;
     }
-
-    return {outputs[0].scalar<float>()(), outputs[1].scalar<float>()()};
 }
 
-}  // namespace regression::logistic
+float LogisticRegression::getPrediction(float value)
+{
+    auto X = ops::Placeholder(mRoot.WithOpName("value"), tf::DataType::DT_FLOAT);
+    auto m = model(X);
+
+    std::vector<tf::Tensor> outputs;
+    tf::ClientSession::FeedType feed{{X, {value}}};
+
+    TF_CHECK_OK(mSession.Run(feed, {m}, &outputs));
+
+    return outputs[0].scalar<float>()();
+}
+
+tf::Output LogisticRegression::model(const tensorflow::ops::Placeholder& placeholder)
+{
+    // y = sigmoid(w0 + x*w1)
+
+    auto w0 = ops::Slice(mRoot, mWeights, {0}, {1});
+    auto w1 = ops::Slice(mRoot, mWeights, {1}, {1});
+
+    return ops::Sigmoid(mRoot, ops::Add(mRoot, ops::Multiply(mRoot, w1, placeholder), w0));
+}
+
+void LogisticRegression::demonstrate()
+{
+    InputMatrix data = InputMatrix::Zero();
+    for (auto i = 0; i < data.cols() / 2; i++) {
+        data(0, i) = Eigen::internal::random<float>(-0.5f, +0.5f) - 1.0f;
+        data(1, i) = 0.0f;
+    }
+
+    for (auto i = data.cols() / 2; i < data.cols(); i++) {
+        data(0, i) = Eigen::internal::random<float>(-0.5f, +0.5f) + 1.0f;
+        data(1, i) = 1.0f;
+    }
+
+    FILE* pipe = popen("gnuplot -persist", "w");
+
+    fprintf(pipe, "plot '-' with points pt 7 lc rgb 'red', '-' with lines lc rgb 'blue'\n");
+
+    for (int i = 0; i < logistic::POINTS_COUNT; i++) {
+        auto x = data(0, i);
+        auto y = data(1, i);
+        fprintf(pipe, "%f %f\n", x, y);
+    }
+
+    fprintf(pipe, "e\n");
+
+    // Regression side
+    LogisticRegression regression;
+
+    regression.trainModel(data);
+    for (float x = -1.5f; x < 1.5f; x += 0.1f) {
+        auto y = regression.getPrediction(x);
+        fprintf(pipe, "%f %f\n", x, y);
+    }
+
+    fprintf(pipe, "e\n");
+    fflush(pipe);
+    fclose(pipe);
+}
+
+}  // namespace regression
