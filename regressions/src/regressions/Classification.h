@@ -16,9 +16,9 @@
 
 namespace regression {
 
-constexpr int POINTS_COUNT = 20;
-constexpr int PARAMS_COUNT = 3;
-constexpr int CLASS_COUNT = 2;
+constexpr int POINTS_COUNT = 100;
+constexpr int PARAMS_COUNT = 15;
+constexpr int CLASS_COUNT = 10;
 constexpr int DATA_COUNT = POINTS_COUNT * CLASS_COUNT;
 
 namespace classification {

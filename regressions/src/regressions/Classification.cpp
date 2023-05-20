@@ -18,9 +18,8 @@ using namespace classification;
 namespace tf = tensorflow;
 namespace ops = tensorflow::ops;
 
-constexpr float LEARNING_RATE = 0.01f;
+constexpr float LEARNING_RATE = 0.0001f;
 constexpr int TRAINIG_EPOCHS = 1000;
-constexpr float LAMBDA = 0.0001f;
 
 Classification::Classification()
     : mRoot{tf::Scope::NewRootScope()}
@@ -71,6 +70,14 @@ void Classification::trainModel(const InputData& data, const classification::Mas
 
     TF_CHECK_OK(tf::AddSymbolicGradients(mRoot, {lossOp}, weightOutputs, &gradients));
 
+    // Define the maximum and minimum values for the clipped gradients
+    const float clip_value_min = -1.0f;
+    const float clip_value_max = 1.0f;
+
+    // Apply gradient clipping (Just as example for the future)
+    //    auto clipped_gradient_0 = ops::ClipByValue(mRoot, gradients[0], clip_value_min, clip_value_max);
+    //    auto clipped_gradient_1 = ops::ClipByValue(mRoot, gradients[1], clip_value_min, clip_value_max);
+
     auto trainOp1 = ops::ApplyGradientDescent(mRoot, mOffsets, LEARNING_RATE, gradients[1]);
     auto trainOp0 = ops::ApplyGradientDescent(mRoot, mWeights, LEARNING_RATE, gradients[0]);
 
@@ -100,7 +107,7 @@ void Classification::trainModel(const InputData& data, const classification::Mas
                                                  {maskValue, maskTesor}};
 
             TF_CHECK_OK(mSession.Run({feedType}, {trainOp0, trainOp1, lossOp}, &outputs));
-            utils::print::printTensor<float>(outputs[0]);
+//            utils::print::printTensor<float>(outputs[0]);
         }
 
         if (epoch % 100 == 0) {
