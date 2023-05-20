@@ -1,12 +1,13 @@
-#include "regressions/Logistic2ParamRegression.h"
-#include "regressions/LinearRegression.h"
+#include "regressions/Classification.h"
 
 using namespace regression;
 
+namespace tf = tensorflow;
+namespace ops = tensorflow::ops;
+
 int main()
 {
-    LinearRegression lineRegression;
-    Logistic2ParamRegression::demonstrate(&lineRegression);
+    Classification::demonstrate();
 
     return 0;
 }

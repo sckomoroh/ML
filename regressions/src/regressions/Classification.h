@@ -1,28 +1,57 @@
+/**
+ * Copyright 2023
+ * Author: Yehor Zvihunov
+ **/
+
 #pragma once
 
+#include <array>
 #include <map>
 #include <vector>
 
+#include "tensorflow/cc/client/client_session.h"
+#include "tensorflow/cc/framework/gradients.h"
+#include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/tensor.h"
 
-namespace regression::classification {
+namespace regression {
 
-constexpr int POINTS_COUNT = 100;
-constexpr int PARAMS_COUNT = 2;
-constexpr int CLASS_COUNT = 3;
+constexpr int POINTS_COUNT = 20;
+constexpr int PARAMS_COUNT = 3;
+constexpr int CLASS_COUNT = 2;
+constexpr int DATA_COUNT = POINTS_COUNT * CLASS_COUNT;
 
-using InputData = Eigen::Tensor<float, 3>;
-using OutputData =
-    std::pair<Eigen::Vector<float, CLASS_COUNT>, Eigen::Matrix<float, PARAMS_COUNT, CLASS_COUNT>>;
+namespace classification {
 
-InputData generateData();
+using InputData = Eigen::Matrix<float, DATA_COUNT, PARAMS_COUNT>;
+using MaskData = Eigen::Matrix<float, DATA_COUNT, CLASS_COUNT>;
+
+}  // namespace classification
 
 class Classification {
-public:
-public:
-    void trainig(const InputData& data);
+private:
+    tensorflow::Scope mRoot;
+    tensorflow::ops::Variable mWeights;
+    tensorflow::ops::Variable mOffsets;
+    tensorflow::ClientSession mSession;
 
-    void verify(const InputData& data, const OutputData& outputData);
+public:
+    Classification();
+
+public:
+    void trainModel(const classification::InputData& data, const classification::MaskData& mask);
+
+    void verify(const classification::InputData& data);
+
+    static void demonstrate();
+
+    int getPrediction(const Eigen::Matrix<float, 1, PARAMS_COUNT>& value);
+
+private:
+    tensorflow::Output model(const tensorflow::ops::Placeholder& placeholder);
+
+    void zeroVector(tensorflow::ops::Variable& var, int l);
+    void zeroMatrix(tensorflow::ops::Variable& var, int l, int h);
 };
 
-}  // namespace regression::classification
+}  // namespace regression

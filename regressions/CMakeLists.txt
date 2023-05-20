@@ -39,6 +39,9 @@ add_executable(
 
     src/regressions/Logistic2ParamRegression.h
     src/regressions/Logistic2ParamRegression.cpp
+
+    src/regressions/Classification.h
+    src/regressions/Classification.cpp
 )
 
 target_link_libraries(
