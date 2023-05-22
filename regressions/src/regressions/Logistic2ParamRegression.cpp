@@ -168,14 +168,14 @@ void Logistic2ParamRegression::demonstrate(LinearRegression* lineRegression)
     FILE* pipe = popen("gnuplot -persist", "w");
 
     if (lineRegression) {
-        fprintf(pipe,
-                "plot '-' with points pt 7 lc rgb 'red', '-' with points pt 7 lc rgb 'green', "
-                "'-' with lines lc rgb 'blue'\n");
+        fprintf(pipe, "plot '-' with points pt 7 lc rgb 'red' notitle, '-' with points pt 7 lc rgb "
+                      "'green' notitle, "
+                      "'-' with lines lc rgb 'blue' notitle\n");
     }
     else {
-        fprintf(pipe,
-                "plot '-' with points pt 7 lc rgb 'red', '-' with points pt 7 lc rgb 'green', "
-                "'-' with points lc rgb 'blue'\n");
+        fprintf(pipe, "plot '-' with points pt 7 lc rgb 'red' notitle, '-' with points pt 7 lc rgb "
+                      "'green' notitle, "
+                      "'-' with points lc rgb 'blue' notitle\n");
     }
 
     for (auto i = 0; i < data.cols() / 2; i++) {
