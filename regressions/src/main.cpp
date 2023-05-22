@@ -1,13 +1,13 @@
-#include "regressions/Classification.h"
-
-using namespace regression;
+#include "clustering/ClusteringKMeans.h"
 
 namespace tf = tensorflow;
 namespace ops = tensorflow::ops;
 
+using namespace clustering;
+
 int main()
 {
-    Classification::demonstrate();
+    ClusteringKMeans::demonstrate();
 
     return 0;
 }
