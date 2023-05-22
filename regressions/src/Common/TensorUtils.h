@@ -10,35 +10,32 @@
 namespace utils ::tensor {
 
 template <typename TEigenType>
-tensorflow::Tensor eigenMatrixToTensor(const TEigenType& eigenObject)
+tensorflow::Tensor tensorFromMatrix(const TEigenType& data)
 {
     using Scalar = typename TEigenType::Scalar;
 
-    constexpr int Rows = TEigenType::RowsAtCompileTime;
-    constexpr int Cols = TEigenType::ColsAtCompileTime;
-    constexpr bool IsDynamic = (Rows == Eigen::Dynamic || Cols == Eigen::Dynamic);
-
-    tensorflow::Tensor tensor(tensorflow::DataTypeToEnum<Scalar>::value,
-                              tensorflow::TensorShape({IsDynamic ? eigenObject.rows() : Rows,
-                                                       IsDynamic ? eigenObject.cols() : Cols}));
-
-    // Copy Eigen object data to TensorFlow tensor
-    auto eigenData = eigenObject.data();
-    auto tensorData = tensor.flat<Scalar>().data();
-    std::copy(eigenData, eigenData + eigenObject.size(), tensorData);
+    tensorflow::Tensor tensor{tensorflow::DataTypeToEnum<Scalar>::value,
+                              {data.rows(), data.cols()}};
+    auto matrix = tensor.matrix<float>();
+    for (int row = 0; row < data.rows(); row++) {
+        for (int col = 0; col < data.cols(); col++) {
+            matrix(row, col) = data(row, col);
+        }
+    }
 
     return tensor;
 }
 
-template <class TVector>
-tensorflow::Tensor eigenVectorToTensor(const TVector& eigenVector)
+template <typename TEigenType>
+tensorflow::Tensor tensorFromVector(const TEigenType& data)
 {
-    tensorflow::Tensor tensor(tensorflow::DT_FLOAT, tensorflow::TensorShape({eigenVector.size()}));
+    using Scalar = typename TEigenType::Scalar;
 
-    // Copy Eigen vector data to TensorFlow tensor
-    auto eigenVectorData = eigenVector.data();
-    auto tensorData = tensor.flat<float>().data();
-    std::copy(eigenVectorData, eigenVectorData + eigenVector.size(), tensorData);
+    tensorflow::Tensor tensor{tensorflow::DataTypeToEnum<Scalar>::value, {data.rows()}};
+    auto matrix = tensor.matrix<float>();
+    for (int row = 0; row < data.rows(); row++) {
+        matrix(row) = data(row);
+    }
 
     return tensor;
 }

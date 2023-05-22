@@ -39,7 +39,7 @@ int Classification::getPrediction(const Eigen::Matrix<float, 1, PARAMS_COUNT>& v
 {
     auto propertyValue = ops::Placeholder(mRoot, tf::DataType::DT_FLOAT);
 
-    auto valueTensor = utils::tensor::eigenMatrixToTensor(value);
+    auto valueTensor = utils::tensor::tensorFromMatrix(value);
     auto m = model(propertyValue);
 
     tf::ClientSession::FeedType feed{{propertyValue, valueTensor}};
@@ -100,8 +100,8 @@ void Classification::trainModel(const InputData& data, const classification::Mas
                 maskMatrix(i) = mask(pointIndex, i);
             }
 
-            auto maskTesor = utils::tensor::eigenVectorToTensor(maskMatrix);
-            auto propertyTensor = utils::tensor::eigenMatrixToTensor(paramsMatrix);
+            auto maskTesor = utils::tensor::tensorFromVector(maskMatrix);
+            auto propertyTensor = utils::tensor::tensorFromMatrix(paramsMatrix);
 
             tf::ClientSession::FeedType feedType{{propertyValue, propertyTensor},
                                                  {maskValue, maskTesor}};
@@ -135,7 +135,7 @@ void Classification::verify(const classification::InputData& data)
             }
 
             auto prediction = getPrediction(params);
-            auto maskTesor = utils::tensor::eigenVectorToTensor(maskMatrix.col(classIndex));
+            auto maskTesor = utils::tensor::tensorFromVector(maskMatrix.col(classIndex));
             TF_CHECK_OK(mSession.Run({ops::ArgMax(mRoot, maskTesor, 0)}, &outputs));
 
             predictions.vec<float>()(pointIndex + (classIndex * POINTS_COUNT)) =

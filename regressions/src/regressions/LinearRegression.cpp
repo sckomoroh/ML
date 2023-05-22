@@ -97,7 +97,9 @@ void LinearRegression::demonstrate()
 
     FILE* pipe = popen("gnuplot -persist", "w");
 
-    fprintf(pipe, "plot '-' with points pt 7 lc rgb 'red', '-' with lines lc rgb 'blue'\n");
+    fprintf(pipe, "plot "
+                    "'-' with points pt 7 lc rgb 'red' notitle, "
+                    "'-' with lines lc rgb 'blue' notitle\n");
 
     for (int i = 0; i < linear::POINTS_COUNT; i++) {
         auto x = data(0, i);
