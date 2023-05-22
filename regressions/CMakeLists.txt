@@ -42,6 +42,9 @@ add_executable(
 
     src/regressions/Classification.h
     src/regressions/Classification.cpp
+
+    src/clustering/ClusteringKMeans.h
+    src/clustering/ClusteringKMeans.cpp
 )
 
 target_link_libraries(
