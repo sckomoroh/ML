@@ -1,3 +1,8 @@
+/**
+ * Copyright 2023
+ * Author: Yehor Zvihunov
+ **/
+
 #include "clustering/ClusteringKMeans.h"
 
 namespace tf = tensorflow;

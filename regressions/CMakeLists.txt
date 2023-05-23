@@ -45,6 +45,9 @@ add_executable(
 
     src/clustering/ClusteringKMeans.h
     src/clustering/ClusteringKMeans.cpp
+
+    src/gnuplot/GnuPlot.h
+    src/gnuplot/GnuPlot.cpp
 )
 
 target_link_libraries(
