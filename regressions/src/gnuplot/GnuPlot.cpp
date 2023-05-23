@@ -53,7 +53,7 @@ std::string GnuPlot::buildGnuPlotCommand(EPlotType plotType,
         type = "lines";
         break;
     case EPlotType::Points:
-        type = "points";
+        type = "points pt 7";
         break;
     }
 
@@ -62,7 +62,7 @@ std::string GnuPlot::buildGnuPlotCommand(EPlotType plotType,
         title = "title '" + name + "'";
     }
 
-    ss << "'-' with " << type << " pt 7 lc rgb '" << color << "' " << title;
+    ss << "'-' with " << type << " lc rgb '" << color << "' " << title;
 
     return ss.str();
 }

@@ -10,10 +10,11 @@
 
 namespace gnuplot {
 
+using VectorF = std::vector<float>;
+using PointsSet = std::vector<VectorF>;
+
 class GnuPlot final {
 public:
-    using PointsSet = std::vector<std::vector<float>>;
-
 private:
     struct PointsData {
         PointsData(const std::string& gnuplotCommand, const PointsSet& pointSet)
