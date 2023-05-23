@@ -13,6 +13,8 @@
 #include "tensorflow/cc/framework/gradients.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 
+#include "gnuplot/GnuPlot.h"
+
 namespace tf = tensorflow;
 namespace ops = tensorflow::ops;
 
@@ -133,6 +135,8 @@ tf::Output PolynomialRegression::model(const tensorflow::ops::Placeholder& place
 
 void PolynomialRegression::demonstrate()
 {
+    using namespace gnuplot;
+
     InputMatrix data = InputMatrix::Zero();
     data.row(0) = Eigen::VectorXf::LinSpaced(POINTS_COUNT, -1.0f, 1.0f);
 
@@ -148,32 +152,26 @@ void PolynomialRegression::demonstrate()
         data(1, i) = Eigen::internal::random<float>(data(1, i) - 1.5f, data(1, i) + 1.5) + 5.0f;
     }
 
-    FILE* pipe = popen("gnuplot -persist", "w");
-
-    fprintf(
-        pipe,
-        "plot '-' with points pt 7 lc rgb 'red' notitle, '-' with lines lc rgb 'blue' notitle\n");
+    GnuPlot gnuPlot;
+    PointsSet points;
+    PointsSet line;
 
     for (int i = 0; i < polynomial::POINTS_COUNT; i++) {
-        auto x = data(0, i);
-        auto y = data(1, i);
-        fprintf(pipe, "%f %f\n", x, y);
+        points.emplace_back(VectorF{data(0, i), data(1, i)});
     }
 
-    fprintf(pipe, "e\n");
+    gnuPlot.plot(points, gnuplot::GnuPlot::EPlotType::Points, "red");
 
     // Regression side
     PolynomialRegression regression;
 
     regression.trainModel(data);
-    for (float x = -1.5f; x < 1.5f; x += 0.1f) {
+    for (float x = -1.0f; x <= 1.0f; x += 0.1f) {
         auto y = regression.getPrediction(x);
-        fprintf(pipe, "%f %f\n", x, y);
+        line.emplace_back(VectorF{x, y});
     }
 
-    fprintf(pipe, "e\n");
-    fflush(pipe);
-    fclose(pipe);
+    gnuPlot.plot(line, gnuplot::GnuPlot::EPlotType::Lines, "blue");
 }
 
 }  // namespace regression

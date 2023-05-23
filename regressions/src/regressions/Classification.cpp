@@ -107,7 +107,6 @@ void Classification::trainModel(const InputData& data, const classification::Mas
                                                  {maskValue, maskTesor}};
 
             TF_CHECK_OK(mSession.Run({feedType}, {trainOp0, trainOp1, lossOp}, &outputs));
-//            utils::print::printTensor<float>(outputs[0]);
         }
 
         if (epoch % 100 == 0) {

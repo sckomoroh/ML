@@ -9,6 +9,8 @@
 
 #include "tensorflow/cc/framework/gradients.h"
 
+#include "gnuplot/GnuPlot.h"
+
 namespace regression {
 
 using namespace logistic2d;
@@ -148,6 +150,8 @@ tf::Output Logistic2ParamRegression::model(const tensorflow::ops::Placeholder& p
 
 void Logistic2ParamRegression::demonstrate(LinearRegression* lineRegression)
 {
+    using namespace gnuplot;
+
     InputMatrix data = InputMatrix::Zero();
     float distance = 3.5f;
     for (auto i = 0; i < data.cols() / 2; i++) {
@@ -165,34 +169,19 @@ void Logistic2ParamRegression::demonstrate(LinearRegression* lineRegression)
     Logistic2ParamRegression regression;
     regression.trainModel(data);
 
-    FILE* pipe = popen("gnuplot -persist", "w");
-
-    if (lineRegression) {
-        fprintf(pipe, "plot '-' with points pt 7 lc rgb 'red' notitle, '-' with points pt 7 lc rgb "
-                      "'green' notitle, "
-                      "'-' with lines lc rgb 'blue' notitle\n");
-    }
-    else {
-        fprintf(pipe, "plot '-' with points pt 7 lc rgb 'red' notitle, '-' with points pt 7 lc rgb "
-                      "'green' notitle, "
-                      "'-' with points lc rgb 'blue' notitle\n");
-    }
+    GnuPlot gnuPlot;
+    std::vector<PointsSet> pointSet(3);
 
     for (auto i = 0; i < data.cols() / 2; i++) {
-        auto x = data(0, i);
-        auto y = data(1, i);
-        fprintf(pipe, "%f %f\n", x, y);
+        pointSet[0].emplace_back(VectorF{data(0, i), data(1, i)});
     }
-
-    fprintf(pipe, "e\n");
 
     for (auto i = data.cols() / 2; i < data.cols(); i++) {
-        auto x = data(0, i);
-        auto y = data(1, i);
-        fprintf(pipe, "%f %f\n", x, y);
+        pointSet[1].emplace_back(VectorF{data(0, i), data(1, i)});
     }
 
-    fprintf(pipe, "e\n");
+    gnuPlot.plot(pointSet[0], GnuPlot::EPlotType::Points, "red");
+    gnuPlot.plot(pointSet[1], GnuPlot::EPlotType::Points, "green");
 
     linear::InputMatrix lineMatrix;
     Eigen::Vector<float, POINTS_COUNT> x1 = Eigen::VectorXf::LinSpaced(POINTS_COUNT, -6.0f, 6.0f);
@@ -202,7 +191,7 @@ void Logistic2ParamRegression::demonstrate(LinearRegression* lineRegression)
             auto z = regression.getPrediction(x1(i), x2(j));
             if (abs(z - 0.5f) < 0.01f) {
                 if (!lineRegression) {
-                    fprintf(pipe, "%f %f\n", x1(i), x2(j));
+                    pointSet[2].emplace_back(VectorF{x1(i), x2(j)});
                 }
                 else {
                     lineMatrix.conservativeResize(lineMatrix.rows(), lineMatrix.cols() + 1);
@@ -217,14 +206,14 @@ void Logistic2ParamRegression::demonstrate(LinearRegression* lineRegression)
         lineRegression->trainModel(lineMatrix);
         for (float x = -6.5f; x < 6.5f; x += 0.1f) {
             auto y = lineRegression->getPrediction(x);
-            fprintf(pipe, "%f %f\n", x, y);
+            pointSet[2].emplace_back(VectorF{x, y});
         }
+        
+        gnuPlot.plot(pointSet[2], GnuPlot::EPlotType::Lines, "blue");
     }
-
-    fprintf(pipe, "e\n");
-
-    fflush(pipe);
-    fclose(pipe);
+    else {
+        gnuPlot.plot(pointSet[2], GnuPlot::EPlotType::Points, "blue");
+    }
 }
 
 }  // namespace regression

@@ -12,6 +12,8 @@
 
 #include "tensorflow/cc/framework/gradients.h"
 
+#include "gnuplot/GnuPlot.h"
+
 namespace regression {
 
 using namespace logistic;
@@ -123,6 +125,8 @@ tf::Output LogisticRegression::model(const tensorflow::ops::Placeholder& placeho
 
 void LogisticRegression::demonstrate()
 {
+    using namespace gnuplot;
+
     InputMatrix data = InputMatrix::Zero();
     for (auto i = 0; i < data.cols() / 2; i++) {
         data(0, i) = Eigen::internal::random<float>(-0.5f, +0.5f) - 1.0f;
@@ -134,19 +138,13 @@ void LogisticRegression::demonstrate()
         data(1, i) = 1.0f;
     }
 
-    FILE* pipe = popen("gnuplot -persist", "w");
-
-    fprintf(
-        pipe,
-        "plot '-' with points pt 7 lc rgb 'red' notitle, '-' with lines lc rgb 'blue' notitle\n");
+    GnuPlot gnuPlot;
+    PointsSet points;
+    PointsSet line;
 
     for (int i = 0; i < logistic::POINTS_COUNT; i++) {
-        auto x = data(0, i);
-        auto y = data(1, i);
-        fprintf(pipe, "%f %f\n", x, y);
+        points.emplace_back(VectorF{data(0, i), data(1, i)});
     }
-
-    fprintf(pipe, "e\n");
 
     // Regression side
     LogisticRegression regression;
@@ -154,12 +152,11 @@ void LogisticRegression::demonstrate()
     regression.trainModel(data);
     for (float x = -1.5f; x < 1.5f; x += 0.1f) {
         auto y = regression.getPrediction(x);
-        fprintf(pipe, "%f %f\n", x, y);
+        line.emplace_back(VectorF{x, y});
     }
 
-    fprintf(pipe, "e\n");
-    fflush(pipe);
-    fclose(pipe);
+    gnuPlot.plot(points, GnuPlot::EPlotType::Points, "red");
+    gnuPlot.plot(line, GnuPlot::EPlotType::Lines, "blue");
 }
 
 }  // namespace regression

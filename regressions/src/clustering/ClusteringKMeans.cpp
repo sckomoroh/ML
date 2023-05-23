@@ -6,6 +6,7 @@
 #include "ClusteringKMeans.h"
 
 #include "Common/TensorUtils.h"
+#include "gnuplot/GnuPlot.h"
 
 namespace clustering {
 
@@ -121,6 +122,8 @@ PredictionData ClusteringKMeans::getPrediction(const k_means::InputData& data)
 
 void ClusteringKMeans::demonstrate()
 {
+    using namespace gnuplot;
+
     InputData inputData;
 
     auto classIndex = 0;
@@ -145,36 +148,31 @@ void ClusteringKMeans::demonstrate()
     std::vector<tf::Tensor> out;
     TF_CHECK_OK(clustering.mSession.Run({clustering.mCentroids}, &out));
 
-    FILE* pipe = popen("gnuplot -persist", "w");
-
-    // Plot centroids
-    fprintf(pipe, "plot "
-                  "'-' with points pt 7 lc rgb 'blue' notitle, "
-                  "'-' with points pt 7 lc rgb 'red' notitle, "
-                  "'-' with points pt 7 lc rgb 'green' notitle, "
-                  "'-' with points pt 7 lc rgb 'yellow' notitle\n");
+    GnuPlot gnuPlot;
+    std::vector<PointsSet> points;
+    PointsSet centroids;
 
     for (auto classIndex = 0; classIndex < CLASS_COUNT; classIndex++) {
+        PointsSet pointSet;
         for (auto pointIndex = 0; pointIndex < POINTS_COUNT * CLASS_COUNT; pointIndex++) {
             auto pntIndex = pointIndexes(pointIndex);
             if (pntIndex == classIndex) {
-                float x = inputData(pointIndex, 0);
-                float y = inputData(pointIndex, 1);
-                fprintf(pipe, "%f %f\n", x, y);
+                pointSet.emplace_back(VectorF{inputData(pointIndex, 0), inputData(pointIndex, 1)});
             }
         }
-        fprintf(pipe, "e\n");
+        points.push_back(pointSet);
     }
 
     for (auto i = 0; i < CLASS_COUNT; i++) {
         float x = out[0].matrix<float>()(i, 0);
         float y = out[0].matrix<float>()(i, 1);
-        fprintf(pipe, "%f %f\n", x, y);
-        fprintf(pipe, "e\n");
+        centroids.emplace_back(VectorF{x, y});
     }
 
-    fflush(pipe);
-    fclose(pipe);
+    gnuPlot.plot(points[0], gnuplot::GnuPlot::EPlotType::Points, "red");
+    gnuPlot.plot(points[1], gnuplot::GnuPlot::EPlotType::Points, "blue");
+    gnuPlot.plot({centroids[0]}, gnuplot::GnuPlot::EPlotType::Points, "green");
+    gnuPlot.plot({centroids[1]}, gnuplot::GnuPlot::EPlotType::Points, "goldenrog");
 }
 
 }  // namespace clustering

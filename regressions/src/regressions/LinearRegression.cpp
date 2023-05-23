@@ -3,6 +3,8 @@
 #include "tensorflow/cc/framework/gradients.h"
 #include "tensorflow/core/framework/tensor.h"
 
+#include "gnuplot/GnuPlot.h"
+
 namespace regression {
 
 using namespace regression::linear;
@@ -86,6 +88,8 @@ tf::Output LinearRegression::model(const tensorflow::ops::Placeholder& placehold
 
 void LinearRegression::demonstrate()
 {
+    using namespace gnuplot;
+
     // Data generation
     InputMatrix data;
     data.resize(2, POINTS_COUNT);
@@ -95,19 +99,15 @@ void LinearRegression::demonstrate()
         data(1, i) = Eigen::internal::random<float>(data(0, i) - 0.5f, data(0, i) + 0.5) + 5.0f;
     }
 
-    FILE* pipe = popen("gnuplot -persist", "w");
-
-    fprintf(pipe, "plot "
-                    "'-' with points pt 7 lc rgb 'red' notitle, "
-                    "'-' with lines lc rgb 'blue' notitle\n");
+    GnuPlot gnuPlot;
+    PointsSet points;
+    PointsSet line;
 
     for (int i = 0; i < linear::POINTS_COUNT; i++) {
-        auto x = data(0, i);
-        auto y = data(1, i);
-        fprintf(pipe, "%f %f\n", x, y);
+        points.emplace_back(VectorF{data(0, i), data(1, i)});
     }
 
-    fprintf(pipe, "e\n");
+    gnuPlot.plot(points, gnuplot::GnuPlot::EPlotType::Points, "red");
 
     // Regression side
     LinearRegression regression;
@@ -115,12 +115,10 @@ void LinearRegression::demonstrate()
     regression.trainModel(data);
     for (float x = 0.5f; x < 5.5f; x += 0.1f) {
         auto y = regression.getPrediction(x);
-        fprintf(pipe, "%f %f\n", x, y);
+        line.emplace_back(VectorF{x, y});
     }
 
-    fprintf(pipe, "e\n");
-    fflush(pipe);
-    fclose(pipe);
+    gnuPlot.plot(line, gnuplot::GnuPlot::EPlotType::Lines, "blue");
 }
 
 };  // namespace regression
