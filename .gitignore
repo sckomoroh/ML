@@ -1,0 +1,8 @@
+*.py
+.vscode/
+build
+python
+venv
+**/_CMakeLists.txt
+regressions/CMakeLists.txt.user
+notes.txt
